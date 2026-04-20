@@ -2,155 +2,671 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Notion写真登録</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>写真登録</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
-    body { font-family: sans-serif; padding: 20px; }
-    .btn { 
-      display: block; width: 100%; padding: 12px;
-      background: #06C755; color: white; border: none;
-      border-radius: 8px; font-size: 16px; cursor: pointer;
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface2: #1c1c28;
+      --accent: #06C755;
+      --accent-dim: rgba(6, 199, 85, 0.15);
+      --accent-glow: rgba(6, 199, 85, 0.4);
+      --text: #f0f0f5;
+      --text-dim: #8888a0;
+      --danger: #ff4d6d;
+      --radius: 16px;
     }
-    #loading { display: none; text-align: center; margin-top: 16px; }
-    #preview { max-width: 100%; margin-top: 16px; display: none; }
-    #status { margin-top: 12px; text-align: center; color: #666; }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Helvetica Neue', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+    }
+
+    .header {
+      width: 100%;
+      max-width: 420px;
+      margin-bottom: 28px;
+      text-align: center;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-dim);
+      border: 1px solid rgba(6,199,85,0.3);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 11px;
+      color: var(--accent);
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    h1 {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      line-height: 1.3;
+    }
+
+    .meta {
+      font-size: 13px;
+      color: var(--text-dim);
+      margin-top: 6px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 100%;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 420px;
+      background: var(--surface);
+      border-radius: var(--radius);
+      border: 1px solid rgba(255,255,255,0.06);
+      overflow: hidden;
+    }
+
+    /* ドロップゾーン */
+    .drop-zone {
+      padding: 36px 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      cursor: pointer;
+      transition: background 0.2s;
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      position: relative;
+    }
+
+    .drop-zone:active { background: var(--surface2); }
+    .drop-zone.disabled { opacity: 0.4; pointer-events: none; }
+
+    .drop-icon {
+      width: 64px;
+      height: 64px;
+      background: var(--accent-dim);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 28px;
+      border: 2px dashed rgba(6,199,85,0.4);
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .drop-zone:active .drop-icon {
+      transform: scale(0.95);
+      border-color: var(--accent);
+    }
+
+    .drop-label {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .drop-hint {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: center;
+      line-height: 1.5;
+    }
+
+    input[type="file"] { display: none; }
+
+    /* プレビューグリッド */
+    .preview-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2px;
+      padding: 2px;
+      background: var(--bg);
+    }
+
+    .preview-item {
+      position: relative;
+      aspect-ratio: 1;
+      overflow: hidden;
+    }
+
+    .preview-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .preview-item .remove-btn {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 22px;
+      height: 22px;
+      background: rgba(0,0,0,0.7);
+      border: none;
+      border-radius: 50%;
+      color: white;
+      font-size: 14px;
+      line-height: 1;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .preview-item .order-badge {
+      position: absolute;
+      bottom: 4px;
+      left: 4px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 10px;
+      color: white;
+      font-weight: 600;
+    }
+
+    /* カウンター */
+    .counter-bar {
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .counter-text {
+      font-size: 13px;
+      color: var(--text-dim);
+    }
+
+    .counter-num {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    /* ステータス */
+    .status-bar {
+      padding: 14px 16px;
+      background: var(--surface2);
+      border-top: 1px solid rgba(255,255,255,0.06);
+    }
+
+    .status-text {
+      font-size: 13px;
+      color: var(--text-dim);
+      text-align: center;
+    }
+
+    .status-text.error { color: var(--danger); }
+    .status-text.success { color: var(--accent); }
+
+    /* 送信ボタン */
+    .submit-btn {
+      width: 100%;
+      max-width: 420px;
+      margin-top: 16px;
+      padding: 16px;
+      background: var(--accent);
+      color: #000;
+      font-size: 16px;
+      font-weight: 700;
+      border: none;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.15s;
+      letter-spacing: 0.02em;
+    }
+
+    .submit-btn:disabled {
+      opacity: 0.3;
+      pointer-events: none;
+    }
+
+    .submit-btn:active { transform: scale(0.98); }
+
+    /* プログレス */
+    .progress-wrap {
+      width: 100%;
+      max-width: 420px;
+      margin-top: 12px;
+      display: none;
+    }
+
+    .progress-label {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 6px;
+      text-align: center;
+    }
+
+    .progress-bar-bg {
+      height: 4px;
+      background: var(--surface2);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      background: var(--accent);
+      border-radius: 2px;
+      width: 0%;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 8px var(--accent-glow);
+    }
+
+    /* 完了画面 */
+    .done-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      padding: 40px 24px;
+      text-align: center;
+      width: 100%;
+      max-width: 420px;
+    }
+
+    .done-icon {
+      width: 72px;
+      height: 72px;
+      background: var(--accent-dim);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 36px;
+      border: 2px solid var(--accent);
+    }
+
+    .done-title {
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .done-sub {
+      font-size: 14px;
+      color: var(--text-dim);
+      line-height: 1.6;
+    }
+
+    .close-btn {
+      padding: 14px 32px;
+      background: var(--accent);
+      color: #000;
+      font-weight: 700;
+      border: none;
+      border-radius: 40px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .card, .submit-btn { animation: fadeIn 0.3s ease forwards; }
   </style>
 </head>
 <body>
-  <div class="container">
-    <h2 id="title">📸 公演写真登録</h2>
-    <input type="file" id="fileInput" accept="image/*" style="display:none">
-    <button class="btn" id="selectBtn" disabled>写真を選択する</button>
-    <div id="loading">🚀 送信中...</div>
-    <img id="preview">
-    <div id="status">初期化中...</div>
+
+  <!-- ヘッダー -->
+  <div class="header">
+    <div class="header-badge">
+      <span>●</span> LIVE ARCHIVE
+    </div>
+    <h1 id="page-title">📸 写真登録</h1>
+    <p class="meta" id="page-meta">読み込み中...</p>
   </div>
 
-  <script>
-    const CONFIG = {
-      LIFF_ID: "2009827233-Vsz01EGH",
-      GAS_URL: "https://script.google.com/macros/s/AKfycbzpY4HEbx5DRJxZZLWmwNOXTUGD_F4bWHoNo7SLvOgMoUJxOZ8KIfPlle_oMpN2e2gt/exec"
+  <!-- メインカード -->
+  <div class="card" id="main-card">
+
+    <!-- ファイル選択ゾーン -->
+    <div class="drop-zone disabled" id="dropZone">
+      <div class="drop-icon">📷</div>
+      <div class="drop-label">写真を選択</div>
+      <div class="drop-hint">タップして写真ライブラリから<br>複数枚選択できます</div>
+    </div>
+
+    <!-- ★ iPhone複数選択対応：multipleを付与 -->
+    <input type="file" id="fileInput" accept="image/*" multiple>
+
+    <!-- プレビューグリッド（選択後表示） -->
+    <div class="preview-grid" id="previewGrid"></div>
+
+    <!-- カウンター -->
+    <div class="counter-bar" id="counterBar" style="display:none">
+      <span class="counter-text">選択中</span>
+      <span class="counter-num" id="countDisplay">0枚</span>
+    </div>
+
+    <!-- ステータス -->
+    <div class="status-bar">
+      <p class="status-text" id="statusText">初期化中...</p>
+    </div>
+  </div>
+
+  <!-- 送信ボタン -->
+  <button class="submit-btn" id="submitBtn" disabled>
+    送信する
+  </button>
+
+  <!-- プログレスバー -->
+  <div class="progress-wrap" id="progressWrap">
+    <p class="progress-label" id="progressLabel">送信中 1/1...</p>
+    <div class="progress-bar-bg">
+      <div class="progress-bar-fill" id="progressFill"></div>
+    </div>
+  </div>
+
+  <!-- 完了画面 -->
+  <div class="done-screen" id="doneScreen">
+    <div class="done-icon">✅</div>
+    <p class="done-title">登録完了</p>
+    <p class="done-sub" id="doneMsg">写真を登録しました</p>
+    <button class="close-btn" onclick="liff.closeWindow()">閉じる</button>
+  </div>
+
+<script>
+// ============================================================
+// 設定
+// ============================================================
+const CONFIG = {
+  LIFF_ID: "2009827233-Vsz01EGH",
+  GAS_URL: "https://script.google.com/macros/s/AKfycbzpY4HEbx5DRJxZZLWmwNOXTUGD_F4bWHoNo7SLvOgMoUJxOZ8KIfPlle_oMpN2e2gt/exec",
+  MAX_PHOTOS: 10,      // 最大枚数
+  SEND_DELAY_MS: 800   // GAS同時実行制限を避けるための送信間隔
+};
+
+// ============================================================
+// 状態管理
+// ============================================================
+let payload_base = {};
+let selectedFiles = []; // { file, dataUrl } の配列
+
+// ============================================================
+// DOM参照
+// ============================================================
+const dropZone     = document.getElementById('dropZone');
+const fileInput    = document.getElementById('fileInput');
+const previewGrid  = document.getElementById('previewGrid');
+const counterBar   = document.getElementById('counterBar');
+const countDisplay = document.getElementById('countDisplay');
+const statusText   = document.getElementById('statusText');
+const submitBtn    = document.getElementById('submitBtn');
+const progressWrap = document.getElementById('progressWrap');
+const progressFill = document.getElementById('progressFill');
+const progressLabel= document.getElementById('progressLabel');
+const doneScreen   = document.getElementById('doneScreen');
+const mainCard     = document.getElementById('main-card');
+
+// ============================================================
+// ユーティリティ
+// ============================================================
+function setStatus(msg, type = '') {
+  statusText.textContent = msg;
+  statusText.className = 'status-text' + (type ? ' ' + type : '');
+}
+
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ============================================================
+// LIFF初期化（★パラメータ維持の核心部分）
+// ============================================================
+window.onload = async () => {
+  try {
+    setStatus('LIFF初期化中...');
+
+    // Step1: liff.init()
+    await liff.init({ liffId: CONFIG.LIFF_ID });
+
+    // Step2: ログイン確認
+    // ★ redirectUri に現在のURL全体（クエリパラメータ含む）を渡す
+    //    これによりLINE認証後に元のURLに戻ってくる
+    if (!liff.isLoggedIn()) {
+      setStatus('ログイン画面へ移動中...');
+      liff.login({ redirectUri: window.location.href });
+      return; // リダイレクトするので以降は実行されない
+    }
+
+    // Step3: ★ liff.init()完了後にURLパラメータを取得
+    //   認証後のリダイレクト時もパラメータが維持される
+    const urlParams = new URLSearchParams(window.location.search);
+    payload_base = {
+      p_id:      urlParams.get('p_id')      || '',
+      artist_id: urlParams.get('artist_id') || '',
+      title:     urlParams.get('title')     || '写真',
+      inputType: urlParams.get('inputType') || 'poster'
     };
 
-    // ★ payload_baseはliff.init()後に設定する
-    let payload_base = {};
+    // Step4: UI更新
+    const titleMap = {
+      poster:  '📸 ポスター写真登録',
+      setlist: '📋 セトリ写真登録',
+      general: '🖼 写真登録'
+    };
+    document.getElementById('page-title').textContent =
+      titleMap[payload_base.inputType] || '📸 写真登録';
+    document.getElementById('page-meta').textContent =
+      payload_base.title || 'タイトル未設定';
 
-    window.onload = async () => {
-      const statusEl = document.getElementById('status');
-      const selectBtn = document.getElementById('selectBtn');
+    // Step5: ドロップゾーンを有効化
+    dropZone.classList.remove('disabled');
+    setStatus(`写真を選択してください（最大${CONFIG.MAX_PHOTOS}枚）`);
+
+  } catch (err) {
+    console.error('LIFF初期化エラー:', err);
+    setStatus('初期化エラー: ' + err.message, 'error');
+  }
+};
+
+// ============================================================
+// ファイル選択処理
+// ============================================================
+dropZone.addEventListener('click', () => {
+  if (!dropZone.classList.contains('disabled')) {
+    fileInput.click();
+  }
+});
+
+// ★ iPhone複数選択対応
+//   input[multiple]でiOSは写真ライブラリの複数選択UIが開く
+fileInput.addEventListener('change', async (e) => {
+  const files = Array.from(e.target.files);
+  if (!files.length) return;
+
+  // 枚数上限チェック
+  const remaining = CONFIG.MAX_PHOTOS - selectedFiles.length;
+  const toAdd = files.slice(0, remaining);
+
+  if (files.length > remaining) {
+    setStatus(`最大${CONFIG.MAX_PHOTOS}枚まで。${files.length - remaining}枚スキップしました`, 'error');
+  }
+
+  setStatus('プレビュー生成中...');
+
+  // FileReader で base64変換してプレビューに追加
+  for (const file of toAdd) {
+    const dataUrl = await readFileAsDataUrl(file);
+    selectedFiles.push({ file, dataUrl });
+    addPreviewItem(selectedFiles.length - 1, dataUrl);
+  }
+
+  updateCounter();
+  updateSubmitBtn();
+  setStatus(`${selectedFiles.length}枚選択済み`);
+
+  // 同じファイルを再選択できるようリセット
+  fileInput.value = '';
+});
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => resolve(e.target.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function addPreviewItem(index, dataUrl) {
+  const item = document.createElement('div');
+  item.className = 'preview-item';
+  item.dataset.index = index;
+  item.innerHTML = `
+    <img src="${dataUrl}" alt="preview ${index + 1}">
+    <button class="remove-btn" onclick="removePhoto(${index})">×</button>
+    <span class="order-badge">${index + 1}</span>
+  `;
+  previewGrid.appendChild(item);
+}
+
+function removePhoto(index) {
+  selectedFiles.splice(index, 1);
+  rebuildPreviewGrid();
+  updateCounter();
+  updateSubmitBtn();
+  if (selectedFiles.length === 0) {
+    setStatus(`写真を選択してください（最大${CONFIG.MAX_PHOTOS}枚）`);
+  } else {
+    setStatus(`${selectedFiles.length}枚選択済み`);
+  }
+}
+
+function rebuildPreviewGrid() {
+  previewGrid.innerHTML = '';
+  selectedFiles.forEach((item, i) => addPreviewItem(i, item.dataUrl));
+}
+
+function updateCounter() {
+  if (selectedFiles.length > 0) {
+    counterBar.style.display = 'flex';
+    countDisplay.textContent = `${selectedFiles.length}枚`;
+  } else {
+    counterBar.style.display = 'none';
+  }
+}
+
+function updateSubmitBtn() {
+  submitBtn.disabled = selectedFiles.length === 0;
+  submitBtn.textContent = selectedFiles.length > 0
+    ? `${selectedFiles.length}枚を送信する`
+    : '送信する';
+}
+
+// ============================================================
+// 送信処理（★1枚ずつawaitで順次送信）
+// ============================================================
+submitBtn.addEventListener('click', async () => {
+  if (selectedFiles.length === 0) return;
+
+  const total = selectedFiles.length;
+  let successCount = 0;
+
+  // UI: 送信中状態に切り替え
+  submitBtn.disabled = true;
+  dropZone.classList.add('disabled');
+  progressWrap.style.display = 'block';
+
+  try {
+    for (let i = 0; i < total; i++) {
+      const { dataUrl } = selectedFiles[i];
+
+      // プログレス更新
+      progressLabel.textContent = `送信中 ${i + 1} / ${total}`;
+      progressFill.style.width = `${(i / total) * 100}%`;
+      setStatus(`${i + 1}枚目を送信中...`);
 
       try {
-        // Step1: liff.init()
-        statusEl.textContent = 'LIFF初期化中...';
-        await liff.init({ liffId: CONFIG.LIFF_ID });
-
-        // Step2: ログイン確認
-        // ★ redirectUriに現在のURL（パラメータ含む）を渡す
-        if (!liff.isLoggedIn()) {
-          statusEl.textContent = 'ログイン中...';
-          liff.login({ redirectUri: window.location.href });
-          return; // リダイレクトするのでここで終了
-        }
-
-        // Step3: liff.init()完了後にパラメータを取得
-        // ★ liff.getDecodedIDToken()でユーザー情報も取得可能
-        const urlParams = new URLSearchParams(window.location.search);
-        payload_base = {
-          p_id:      urlParams.get('p_id')      || '',
-          artist_id: urlParams.get('artist_id') || '',
-          title:     urlParams.get('title')     || 'photo',
-          inputType: urlParams.get('inputType') || 'poster'
-        };
-
-        // パラメータ確認ログ
-        console.log('payload_base:', payload_base);
-
-        // Step4: ボタンを有効化
-        statusEl.textContent = `準備完了：${payload_base.title || '写真登録'}`;
-        selectBtn.disabled = false;
-
-        // タイトル表示
-        const titleEl = document.getElementById('title');
-        if (payload_base.inputType === 'setlist') {
-          titleEl.textContent = '📋 セトリ写真登録';
-        } else {
-          titleEl.textContent = '📸 ポスター写真登録';
-        }
-
+        await sendOne(dataUrl, i + 1, total);
+        successCount++;
       } catch (err) {
-        console.error("LIFF初期化エラー:", err);
-        statusEl.textContent = '初期化エラー: ' + err.message;
+        console.error(`${i + 1}枚目の送信失敗:`, err);
+        setStatus(`${i + 1}枚目の送信に失敗しました`, 'error');
       }
-    };
 
-    // ファイル選択ボタン
-    document.getElementById('selectBtn').addEventListener('click', () => {
-      document.getElementById('fileInput').click();
-    });
-
-    // ファイル選択後の処理
-    document.getElementById('fileInput').addEventListener('change', async (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
-
-      // プレビュー表示
-      const reader = new FileReader();
-      reader.onload = async (ev) => {
-        const base64Data = ev.target.result;
-
-        // プレビュー
-        const preview = document.getElementById('preview');
-        preview.src = base64Data;
-        preview.style.display = 'block';
-
-        // 送信
-        await upload(base64Data);
-      };
-      reader.readAsDataURL(file);
-    });
-
-    // アップロード処理
-    async function upload(base64Data) {
-      const loading = document.getElementById('loading');
-      const selectBtn = document.getElementById('selectBtn');
-      const statusEl = document.getElementById('status');
-
-      loading.style.display = 'block';
-      selectBtn.disabled = true;
-      statusEl.textContent = '送信中...';
-
-      const payload = { ...payload_base, image: base64Data };
-
-      try {
-        // ★ GASはCORSヘッダーを返せないため
-        //    mode: 'no-cors'を使う場合はレスポンスが読めない
-        //    Content-Type: text/plain でリクエストするとpreflight不要
-        const res = await fetch(CONFIG.GAS_URL, {
-          method: "POST",
-          headers: { "Content-Type": "text/plain;charset=utf-8" },
-          body: JSON.stringify(payload)
-        });
-
-        // ★ no-corsを使わない場合はここでJSONを読む
-        const result = await res.json();
-
-        if (result.status === "ok") {
-          statusEl.textContent = '✅ 送信成功！';
-          alert("送信しました");
-          liff.closeWindow();
-        } else {
-          throw new Error(result.message || '不明なエラー');
-        }
-      } catch (err) {
-        console.error('送信エラー:', err);
-        statusEl.textContent = 'エラー: ' + err.message;
-        alert("エラーが発生しました: " + err.message);
-        selectBtn.disabled = false;
-      } finally {
-        loading.style.display = 'none';
+      // ★ GASの同時実行制限を避けるため、次の送信まで待機
+      if (i < total - 1) {
+        await sleep(CONFIG.SEND_DELAY_MS);
       }
     }
-  </script>
+
+    // 完了
+    progressFill.style.width = '100%';
+    await sleep(300);
+
+    showDone(successCount, total);
+
+  } catch (err) {
+    console.error('送信エラー:', err);
+    setStatus('送信中にエラーが発生しました: ' + err.message, 'error');
+    submitBtn.disabled = false;
+    dropZone.classList.remove('disabled');
+    progressWrap.style.display = 'none';
+  }
+});
+
+// 1枚送信
+async function sendOne(base64DataUrl, currentIndex, total) {
+  const payload = {
+    ...payload_base,
+    image: base64DataUrl,
+    imageIndex: currentIndex,
+    imageTotal: total
+  };
+
+  const res = await fetch(CONFIG.GAS_URL, {
+    method: 'POST',
+    // ★ text/plain を使うことでCORSのpreflight(OPTIONS)を回避
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+    throw new Error(`HTTP ${res.status}`);
+  }
+
+  const result = await res.json();
+  if (result.status !== 'ok') {
+    throw new Error(result.message || '不明なエラー');
+  }
+
+  return result;
+}
+
+// 完了画面表示
+function showDone(successCount, total) {
+  mainCard.style.display = 'none';
+  submitBtn.style.display = 'none';
+  progressWrap.style.display = 'none';
+  doneScreen.style.display = 'flex';
+
+  const doneMsg = document.getElementById('doneMsg');
+  if (successCount === total) {
+    doneMsg.textContent = `${total}枚の写真を登録しました`;
+  } else {
+    doneMsg.textContent = `${total}枚中 ${successCount}枚の登録に成功しました`;
+  }
+}
+</script>
 </body>
 </html>
