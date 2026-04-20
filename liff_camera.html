@@ -6,94 +6,149 @@
   <title>Notion写真登録</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
-    body { font-family: sans-serif; text-align: center; padding: 20px; background: #f4f7f6; }
-    .container { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 80vh; }
-    #preview { width: 100%; max-width: 400px; margin-top: 20px; display: none; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
-    .btn { padding: 20px 40px; font-size: 18px; font-weight: bold; cursor: pointer; background: #00b900; color: white; border: none; border-radius: 10px; width: 100%; max-width: 320px; transition: 0.3s; }
-    #loading { display: none; color: #333; margin-top: 20px; font-weight: bold; line-height: 1.6; }
+    body { font-family: sans-serif; padding: 20px; }
+    .btn { 
+      display: block; width: 100%; padding: 12px;
+      background: #06C755; color: white; border: none;
+      border-radius: 8px; font-size: 16px; cursor: pointer;
+    }
+    #loading { display: none; text-align: center; margin-top: 16px; }
+    #preview { max-width: 100%; margin-top: 16px; display: none; }
+    #status { margin-top: 12px; text-align: center; color: #666; }
   </style>
 </head>
 <body>
   <div class="container">
     <h2 id="title">📸 公演写真登録</h2>
-    <p id="info">写真ライブラリから選択してください</p>
-    
     <input type="file" id="fileInput" accept="image/*" style="display:none">
-    <button class="btn" id="selectBtn">写真を選択する</button>
-    
-    <div id="loading">🚀 送信中...<br>Notionへの登録準備をしています</div>
+    <button class="btn" id="selectBtn" disabled>写真を選択する</button>
+    <div id="loading">🚀 送信中...</div>
     <img id="preview">
+    <div id="status">初期化中...</div>
   </div>
 
   <script>
-    /**
-     * たろう様のGAS URLを直接埋め込みました
-     */
     const CONFIG = {
-      LIFF_ID: "2009827233-Vsz01EGH", 
+      LIFF_ID: "2009827233-Vsz01EGH",
       GAS_URL: "https://script.google.com/macros/s/AKfycbzpY4HEbx5DRJxZZLWmwNOXTUGD_F4bWHoNo7SLvOgMoUJxOZ8KIfPlle_oMpN2e2gt/exec"
     };
 
-    const urlParams = new URLSearchParams(window.location.search);
-    const payload_base = {
-      p_id: urlParams.get('p_id'),
-      artist_id: urlParams.get('artist_id'),
-      title: urlParams.get('title'),
-      inputType: urlParams.get('inputType') || 'poster'
-    };
+    // ★ payload_baseはliff.init()後に設定する
+    let payload_base = {};
 
     window.onload = async () => {
+      const statusEl = document.getElementById('status');
+      const selectBtn = document.getElementById('selectBtn');
+
       try {
+        // Step1: liff.init()
+        statusEl.textContent = 'LIFF初期化中...';
         await liff.init({ liffId: CONFIG.LIFF_ID });
-        // ログイン処理（パラメータを保持するための修正済み）
+
+        // Step2: ログイン確認
+        // ★ redirectUriに現在のURL（パラメータ含む）を渡す
         if (!liff.isLoggedIn()) {
-          liff.login();
-          return;
+          statusEl.textContent = 'ログイン中...';
+          liff.login({ redirectUri: window.location.href });
+          return; // リダイレクトするのでここで終了
         }
+
+        // Step3: liff.init()完了後にパラメータを取得
+        // ★ liff.getDecodedIDToken()でユーザー情報も取得可能
+        const urlParams = new URLSearchParams(window.location.search);
+        payload_base = {
+          p_id:      urlParams.get('p_id')      || '',
+          artist_id: urlParams.get('artist_id') || '',
+          title:     urlParams.get('title')     || 'photo',
+          inputType: urlParams.get('inputType') || 'poster'
+        };
+
+        // パラメータ確認ログ
+        console.log('payload_base:', payload_base);
+
+        // Step4: ボタンを有効化
+        statusEl.textContent = `準備完了：${payload_base.title || '写真登録'}`;
+        selectBtn.disabled = false;
+
+        // タイトル表示
+        const titleEl = document.getElementById('title');
+        if (payload_base.inputType === 'setlist') {
+          titleEl.textContent = '📋 セトリ写真登録';
+        } else {
+          titleEl.textContent = '📸 ポスター写真登録';
+        }
+
       } catch (err) {
         console.error("LIFF初期化エラー:", err);
+        statusEl.textContent = '初期化エラー: ' + err.message;
       }
     };
 
-    document.getElementById('selectBtn').onclick = () => document.getElementById('fileInput').click();
+    // ファイル選択ボタン
+    document.getElementById('selectBtn').addEventListener('click', () => {
+      document.getElementById('fileInput').click();
+    });
 
-    document.getElementById('fileInput').onchange = (e) => {
+    // ファイル選択後の処理
+    document.getElementById('fileInput').addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
+      // プレビュー表示
       const reader = new FileReader();
-      reader.onload = (re) => {
-        document.getElementById('preview').src = re.target.result;
-        document.getElementById('preview').style.display = 'block';
-        document.getElementById('selectBtn').style.display = 'none';
-        document.getElementById('info').style.display = 'none';
-        upload(re.target.result);
+      reader.onload = async (ev) => {
+        const base64Data = ev.target.result;
+
+        // プレビュー
+        const preview = document.getElementById('preview');
+        preview.src = base64Data;
+        preview.style.display = 'block';
+
+        // 送信
+        await upload(base64Data);
       };
       reader.readAsDataURL(file);
-    };
+    });
 
+    // アップロード処理
     async function upload(base64Data) {
-      document.getElementById('loading').style.display = 'block';
+      const loading = document.getElementById('loading');
+      const selectBtn = document.getElementById('selectBtn');
+      const statusEl = document.getElementById('status');
+
+      loading.style.display = 'block';
+      selectBtn.disabled = true;
+      statusEl.textContent = '送信中...';
+
       const payload = { ...payload_base, image: base64Data };
 
       try {
+        // ★ GASはCORSヘッダーを返せないため
+        //    mode: 'no-cors'を使う場合はレスポンスが読めない
+        //    Content-Type: text/plain でリクエストするとpreflight不要
         const res = await fetch(CONFIG.GAS_URL, {
           method: "POST",
           headers: { "Content-Type": "text/plain;charset=utf-8" },
           body: JSON.stringify(payload)
         });
 
+        // ★ no-corsを使わない場合はここでJSONを読む
         const result = await res.json();
+
         if (result.status === "ok") {
-          alert("送信に成功しました！Notionを確認してください。");
+          statusEl.textContent = '✅ 送信成功！';
+          alert("送信しました");
           liff.closeWindow();
         } else {
-          throw new Error(result.message || "Unknown error");
+          throw new Error(result.message || '不明なエラー');
         }
       } catch (err) {
-        alert("送信エラーが発生しました: " + err.message);
-        document.getElementById('selectBtn').style.display = 'block';
-        document.getElementById('loading').style.display = 'none';
+        console.error('送信エラー:', err);
+        statusEl.textContent = 'エラー: ' + err.message;
+        alert("エラーが発生しました: " + err.message);
+        selectBtn.disabled = false;
+      } finally {
+        loading.style.display = 'none';
       }
     }
   </script>
