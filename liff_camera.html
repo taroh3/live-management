@@ -92,14 +92,13 @@
 
 <script>
 const CONFIG = {
-  LIFF_ID: "2009827233-Vsz01EGH",
-  // 【修正】Cloudflare Workers経由に変更（302リダイレクト問題を回避）
-  GAS_URL: "https://throbbing-base-9480.taroh3333.workers.dev",
-  MAX_PHOTOS: 10,
+  LIFF_ID:      "2009827233-Vsz01EGH",
+  GAS_URL:      "https://throbbing-base-9480.taroh3333.workers.dev",
+  MAX_PHOTOS:   10,
   SEND_DELAY_MS: 800
 };
 
-let payload_base = {};
+let payload_base  = {};
 let selectedFiles = [];
 
 const dropZone    = document.getElementById('dropZone');
@@ -117,7 +116,7 @@ const mainCard    = document.getElementById('main-card');
 
 function setStatus(msg, type = '') {
   statusText.textContent = msg;
-  statusText.className = 'status-text' + (type ? ' ' + type : '');
+  statusText.className   = 'status-text' + (type ? ' ' + type : '');
 }
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
@@ -131,18 +130,38 @@ window.onload = async () => {
       return;
     }
 
+    // 【修正】liff.getContext()でuserIdを同期的に取得
+    // getProfile()は非同期・セキュリティ上の懸念があるため
+    // getContext()を使用（liff.init()後すぐ利用可能）
+    let userId = null;
+    try {
+      const context = liff.getContext();
+      userId = context ? context.userId : null;
+    } catch (e) {
+      console.warn('getContext失敗:', e);
+    }
+
+    // getContext()でuserIdが取得できない場合はgetProfile()で補完
+    if (!userId) {
+      try {
+        const profile = await liff.getProfile();
+        userId = profile ? profile.userId : null;
+      } catch (e) {
+        console.warn('getProfile失敗:', e);
+      }
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
 
-    // 【修正】inputTypeをURLパラメータからそのまま取得
-    // GASが期待する値：poster_image / setlist_image
     payload_base = {
       p_id:      urlParams.get('p_id')      || '',
       artist_id: urlParams.get('artist_id') || '',
       title:     urlParams.get('title')     || '写真',
-      inputType: urlParams.get('inputType') || 'poster_image'
+      inputType: urlParams.get('inputType') || 'poster_image',
+      userId:    userId || ''  // 【修正】userIdを追加
     };
 
-    // 【修正】inputTypeに基づいてタイトルを表示
+    // inputTypeに基づいてタイトルを表示
     const titleMap = {
       'poster_image':  '📸 ポスター写真登録',
       'setlist_image': '📋 セトリ写真登録',
@@ -207,10 +226,10 @@ function removePhoto(index) {
 }
 
 function updateUI() {
-  counterBar.style.display  = selectedFiles.length > 0 ? 'flex' : 'none';
-  countDisplay.textContent  = `${selectedFiles.length}枚`;
-  submitBtn.disabled        = selectedFiles.length === 0;
-  submitBtn.textContent     = `${selectedFiles.length}枚を送信する`;
+  counterBar.style.display = selectedFiles.length > 0 ? 'flex' : 'none';
+  countDisplay.textContent = `${selectedFiles.length}枚`;
+  submitBtn.disabled       = selectedFiles.length === 0;
+  submitBtn.textContent    = `${selectedFiles.length}枚を送信する`;
   setStatus(selectedFiles.length > 0
     ? `${selectedFiles.length}枚選択済み`
     : `写真を選択してください`);
@@ -224,8 +243,8 @@ submitBtn.addEventListener('click', async () => {
   let successCount = 0;
 
   for (let i = 0; i < selectedFiles.length; i++) {
-    progressLabel.textContent  = `送信中 ${i + 1} / ${selectedFiles.length}`;
-    progressFill.style.width   = `${(i / selectedFiles.length) * 100}%`;
+    progressLabel.textContent = `送信中 ${i + 1} / ${selectedFiles.length}`;
+    progressFill.style.width  = `${(i / selectedFiles.length) * 100}%`;
 
     try {
       const res = await fetch(CONFIG.GAS_URL, {
@@ -251,10 +270,10 @@ submitBtn.addEventListener('click', async () => {
 });
 
 function showDone(s, t) {
-  mainCard.style.display      = 'none';
-  submitBtn.style.display     = 'none';
-  progressWrap.style.display  = 'none';
-  doneScreen.style.display    = 'flex';
+  mainCard.style.display     = 'none';
+  submitBtn.style.display    = 'none';
+  progressWrap.style.display = 'none';
+  doneScreen.style.display   = 'flex';
   document.getElementById('doneMsg').textContent =
     `${t}枚中 ${s}枚の登録に成功しました`;
 }
