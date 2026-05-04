@@ -6,7 +6,6 @@
   <title>写真登録</title>
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <style>
-    /* （たろう様のデザインCSSをそのまま保持しています） */
     :root {
       --bg: #0a0a0f;
       --surface: #13131a;
@@ -93,8 +92,9 @@
 
 <script>
 const CONFIG = {
-  LIFF_ID: "2009827233-Vsz01EGH", // ★ここをたろう様のIDに
-  GAS_URL: "https://script.google.com/macros/s/AKfycbzpY4HEbx5DRJxZZLWmwNOXTUGD_F4bWHoNo7SLvOgMoUJxOZ8KIfPlle_oMpN2e2gt/exec",
+  LIFF_ID: "2009827233-Vsz01EGH",
+  // 【修正】Cloudflare Workers経由に変更（302リダイレクト問題を回避）
+  GAS_URL: "https://throbbing-base-9480.taroh3333.workers.dev",
   MAX_PHOTOS: 10,
   SEND_DELAY_MS: 800
 };
@@ -102,20 +102,23 @@ const CONFIG = {
 let payload_base = {};
 let selectedFiles = [];
 
-const dropZone = document.getElementById('dropZone');
-const fileInput = document.getElementById('fileInput');
+const dropZone    = document.getElementById('dropZone');
+const fileInput   = document.getElementById('fileInput');
 const previewGrid = document.getElementById('previewGrid');
-const counterBar = document.getElementById('counterBar');
+const counterBar  = document.getElementById('counterBar');
 const countDisplay = document.getElementById('countDisplay');
-const statusText = document.getElementById('statusText');
-const submitBtn = document.getElementById('submitBtn');
+const statusText  = document.getElementById('statusText');
+const submitBtn   = document.getElementById('submitBtn');
 const progressWrap = document.getElementById('progressWrap');
 const progressFill = document.getElementById('progressFill');
 const progressLabel = document.getElementById('progressLabel');
-const doneScreen = document.getElementById('doneScreen');
-const mainCard = document.getElementById('main-card');
+const doneScreen  = document.getElementById('doneScreen');
+const mainCard    = document.getElementById('main-card');
 
-function setStatus(msg, type = '') { statusText.textContent = msg; statusText.className = 'status-text' + (type ? ' ' + type : ''); }
+function setStatus(msg, type = '') {
+  statusText.textContent = msg;
+  statusText.className = 'status-text' + (type ? ' ' + type : '');
+}
 function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 
 window.onload = async () => {
@@ -129,28 +132,46 @@ window.onload = async () => {
     }
 
     const urlParams = new URLSearchParams(window.location.search);
+
+    // 【修正】inputTypeをURLパラメータからそのまま取得
+    // GASが期待する値：poster_image / setlist_image
     payload_base = {
-      p_id: urlParams.get('p_id') || '',
+      p_id:      urlParams.get('p_id')      || '',
       artist_id: urlParams.get('artist_id') || '',
-      title: urlParams.get('title') || '写真',
-      inputType: urlParams.get('inputType') || 'poster'
+      title:     urlParams.get('title')     || '写真',
+      inputType: urlParams.get('inputType') || 'poster_image'
     };
 
-    const titleMap = { poster: '📸 ポスター写真登録', setlist: '📋 セトリ写真登録', general: '🖼 写真登録' };
-    document.getElementById('page-title').textContent = titleMap[payload_base.inputType] || '📸 写真登録';
-    document.getElementById('page-meta').textContent = payload_base.title || 'タイトル未設定';
+    // 【修正】inputTypeに基づいてタイトルを表示
+    const titleMap = {
+      'poster_image':  '📸 ポスター写真登録',
+      'setlist_image': '📋 セトリ写真登録',
+      'poster':        '📸 ポスター写真登録',
+      'setlist':       '📋 セトリ写真登録',
+      'general':       '🖼 写真登録'
+    };
+    document.getElementById('page-title').textContent =
+      titleMap[payload_base.inputType] || '📸 写真登録';
+    document.getElementById('page-meta').textContent =
+      payload_base.title || 'タイトル未設定';
 
     dropZone.classList.remove('disabled');
     setStatus(`写真を選択してください（最大${CONFIG.MAX_PHOTOS}枚）`);
-  } catch (err) { setStatus('初期化エラー: ' + err.message, 'error'); }
+
+  } catch (err) {
+    setStatus('初期化エラー: ' + err.message, 'error');
+  }
 };
 
-dropZone.addEventListener('click', () => { if (!dropZone.classList.contains('disabled')) fileInput.click(); });
+dropZone.addEventListener('click', () => {
+  if (!dropZone.classList.contains('disabled')) fileInput.click();
+});
 
 fileInput.addEventListener('change', async (e) => {
-  const files = Array.from(e.target.files);
+  const files     = Array.from(e.target.files);
   const remaining = CONFIG.MAX_PHOTOS - selectedFiles.length;
-  const toAdd = files.slice(0, remaining);
+  const toAdd     = files.slice(0, remaining);
+
   for (const file of toAdd) {
     const dataUrl = await new Promise(resolve => {
       const reader = new FileReader();
@@ -160,7 +181,10 @@ fileInput.addEventListener('change', async (e) => {
     selectedFiles.push({ file, dataUrl });
     const item = document.createElement('div');
     item.className = 'preview-item';
-    item.innerHTML = `<img src="${dataUrl}"><button class="remove-btn" onclick="removePhoto(${selectedFiles.length-1})">×</button><span class="order-badge">${selectedFiles.length}</span>`;
+    item.innerHTML = `
+      <img src="${dataUrl}">
+      <button class="remove-btn" onclick="removePhoto(${selectedFiles.length - 1})">×</button>
+      <span class="order-badge">${selectedFiles.length}</span>`;
     previewGrid.appendChild(item);
   }
   updateUI();
@@ -173,42 +197,66 @@ function removePhoto(index) {
   selectedFiles.forEach((f, i) => {
     const item = document.createElement('div');
     item.className = 'preview-item';
-    item.innerHTML = `<img src="${f.dataUrl}"><button class="remove-btn" onclick="removePhoto(${i})">×</button><span class="order-badge">${i+1}</span>`;
+    item.innerHTML = `
+      <img src="${f.dataUrl}">
+      <button class="remove-btn" onclick="removePhoto(${i})">×</button>
+      <span class="order-badge">${i + 1}</span>`;
     previewGrid.appendChild(item);
   });
   updateUI();
 }
 
 function updateUI() {
-  counterBar.style.display = selectedFiles.length > 0 ? 'flex' : 'none';
-  countDisplay.textContent = `${selectedFiles.length}枚`;
-  submitBtn.disabled = selectedFiles.length === 0;
-  submitBtn.textContent = `${selectedFiles.length}枚を送信する`;
-  setStatus(selectedFiles.length > 0 ? `${selectedFiles.length}枚選択済み` : `写真を選択してください`);
+  counterBar.style.display  = selectedFiles.length > 0 ? 'flex' : 'none';
+  countDisplay.textContent  = `${selectedFiles.length}枚`;
+  submitBtn.disabled        = selectedFiles.length === 0;
+  submitBtn.textContent     = `${selectedFiles.length}枚を送信する`;
+  setStatus(selectedFiles.length > 0
+    ? `${selectedFiles.length}枚選択済み`
+    : `写真を選択してください`);
 }
 
 submitBtn.addEventListener('click', async () => {
-  submitBtn.disabled = true; dropZone.classList.add('disabled'); progressWrap.style.display = 'block';
+  submitBtn.disabled = true;
+  dropZone.classList.add('disabled');
+  progressWrap.style.display = 'block';
+
   let successCount = 0;
+
   for (let i = 0; i < selectedFiles.length; i++) {
-    progressLabel.textContent = `送信中 ${i + 1} / ${selectedFiles.length}`;
-    progressFill.style.width = `${(i / selectedFiles.length) * 100}%`;
+    progressLabel.textContent  = `送信中 ${i + 1} / ${selectedFiles.length}`;
+    progressFill.style.width   = `${(i / selectedFiles.length) * 100}%`;
+
     try {
       const res = await fetch(CONFIG.GAS_URL, {
-        method: 'POST',
+        method:  'POST',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ ...payload_base, image: selectedFiles[i].dataUrl })
+        body:    JSON.stringify({ ...payload_base, image: selectedFiles[i].dataUrl })
       });
-      if (res.ok) successCount++;
+
+      if (res.ok) {
+        successCount++;
+      } else {
+        console.error(`送信失敗 ${i + 1}枚目: HTTP ${res.status}`);
+      }
       await sleep(CONFIG.SEND_DELAY_MS);
-    } catch (err) { console.error(err); }
+
+    } catch (err) {
+      console.error(`送信エラー ${i + 1}枚目:`, err);
+    }
   }
+
+  progressFill.style.width = '100%';
   showDone(successCount, selectedFiles.length);
 });
 
 function showDone(s, t) {
-  mainCard.style.display = 'none'; submitBtn.style.display = 'none'; progressWrap.style.display = 'none'; doneScreen.style.display = 'flex';
-  document.getElementById('doneMsg').textContent = `${t}枚中 ${s}枚の登録に成功しました`;
+  mainCard.style.display      = 'none';
+  submitBtn.style.display     = 'none';
+  progressWrap.style.display  = 'none';
+  doneScreen.style.display    = 'flex';
+  document.getElementById('doneMsg').textContent =
+    `${t}枚中 ${s}枚の登録に成功しました`;
 }
 </script>
 </body>
