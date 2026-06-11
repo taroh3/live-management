@@ -499,23 +499,26 @@
   // ============================================================
   // 設定
   // ============================================================
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwVPjE1NTYWv6FWYOXovTWg9iCAP4CXx7QeDLVrg9aT8-HBoqEBkzIeDcIo7-H29cuOWQ/exec';
+  const GAS_URL = ''; // ← GAS WebApp URLをここに設定
 
   // ============================================================
   // 状態管理
   // ============================================================
   let state = {
-    concerts:       [],
-    filteredConcerts: [],
-    artists:        [],
-    currentIdx:     0,
-    currentTab:     'concerts',
-    currentYear:    new Date().getFullYear(),
-    statsData:      null,
-    filters:        { artist: null, year: null, prefecture: null },
-    isOffline:      false,
-    syncTime:       '',
-    setlistCache:   {},
+    concerts:           [],
+    filteredConcerts:   [],
+    concertsByYear:     {},
+    years:              [],
+    currentFilterYear:  String(new Date().getFullYear()),
+    artists:            [],
+    currentIdx:         0,
+    currentTab:         'concerts',
+    currentYear:        new Date().getFullYear(),
+    statsData:          null,
+    filters:            { artist: null, year: null, prefecture: null },
+    isOffline:          false,
+    syncTime:           '',
+    setlistCache:       {},
   };
 
   // ============================================================
@@ -564,19 +567,28 @@
     }
 
     try {
+      // まず年一覧を取得
+      document.getElementById('loading-msg').textContent = '年一覧取得中...';
+      const years = await apiGet('years');
+      state.years      = years;
+      state.currentFilterYear = String(new Date().getFullYear());
+
+      // 当年の公演と演者一覧を並列取得
       document.getElementById('loading-msg').textContent = '公演データ取得中...';
       const [concerts, artists] = await Promise.all([
-        apiGet('concerts'),
+        apiGet('concerts', { year: state.currentFilterYear }),
         apiGet('artists'),
       ]);
 
       // ローカルに保存（オフライン対応）
-      localStorage.setItem('lv_concerts', JSON.stringify(concerts));
-      localStorage.setItem('lv_artists',  JSON.stringify(artists));
+      localStorage.setItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
+      localStorage.setItem('lv_artists', JSON.stringify(artists));
+      localStorage.setItem('lv_years',   JSON.stringify(years));
 
-      state.concerts  = concerts;
-      state.artists   = artists;
-      state.syncTime  = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+      state.concertsByYear[state.currentFilterYear] = concerts;
+      state.concerts = concerts;
+      state.artists  = artists;
+      state.syncTime = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
       document.getElementById('sync-time').textContent = '最終同期: ' + state.syncTime;
 
@@ -769,7 +781,7 @@
   // ============================================================
   function renderFilters() {
     const bar      = document.getElementById('filter-bar');
-    const years    = [...new Set(state.concerts.map(c => c.date ? c.date.slice(0, 4) : '').filter(Boolean))].sort().reverse();
+    const years    = state.years.length > 0 ? state.years : [...new Set(state.concerts.map(c => c.date ? c.date.slice(0, 4) : '').filter(Boolean))].sort().reverse();
     const prefs    = [...new Set(state.concerts.map(c => c.prefecture).filter(Boolean))].sort();
     const artistNames = [...new Set(state.concerts.flatMap(c => c.artists.map(a => a.name)).filter(Boolean))].sort();
 
@@ -781,14 +793,36 @@
     bar.innerHTML = html;
   }
 
-  function applyFilter(type, value, el) {
+  async function applyFilter(type, value, el) {
     document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
     el.classList.add('active');
 
-    if (type === 'all') state.filters = { artist: null, year: null, prefecture: null };
-    else if (type === 'year')   state.filters.year       = value;
-    else if (type === 'pref')   state.filters.prefecture = value;
-    else if (type === 'artist') state.filters.artist     = value;
+    if (type === 'all') {
+      state.filters = { artist: null, year: null, prefecture: null };
+      state.currentFilterYear = String(new Date().getFullYear());
+      state.concerts = state.concertsByYear[state.currentFilterYear] || [];
+    } else if (type === 'year') {
+      state.filters.year      = value;
+      state.currentFilterYear = value;
+
+      // 未取得の年はAPIから取得
+      if (!state.concertsByYear[value]) {
+        showToast('⏳ ' + value + '年のデータを取得中...');
+        try {
+          const data = await apiGet('concerts', { year: value });
+          state.concertsByYear[value] = data;
+          localStorage.setItem('lv_concerts_' + value, JSON.stringify(data));
+        } catch(e) {
+          showToast('❌ データ取得失敗: ' + e.message);
+          return;
+        }
+      }
+      state.concerts = state.concertsByYear[value];
+    } else if (type === 'pref') {
+      state.filters.prefecture = value;
+    } else if (type === 'artist') {
+      state.filters.artist = value;
+    }
 
     state.setlistCache = {};
     renderConcerts();
@@ -1103,15 +1137,16 @@
   async function doSync() {
     try {
       const [concerts, artists] = await Promise.all([
-        apiGet('concerts'),
+        apiGet('concerts', { year: state.currentFilterYear }),
         apiGet('artists'),
       ]);
 
-      localStorage.setItem('lv_concerts', JSON.stringify(concerts));
-      localStorage.setItem('lv_artists',  JSON.stringify(artists));
+      localStorage.setItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
+      localStorage.setItem('lv_artists', JSON.stringify(artists));
 
-      state.concerts = concerts;
-      state.artists  = artists;
+      state.concertsByYear[state.currentFilterYear] = concerts;
+      state.concerts     = concerts;
+      state.artists      = artists;
       state.setlistCache = {};
       state.statsData    = null;
 
