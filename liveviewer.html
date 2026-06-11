@@ -62,6 +62,14 @@
       font-size: 12px;
       color: var(--text-sub);
     }
+    .date-jump-btn {
+      background: none;
+      border: 1px solid var(--accent-dim);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 16px;
+      cursor: pointer;
+    }
     .filter-bar {
       display: flex;
       gap: 8px;
@@ -430,7 +438,10 @@
 <div class="header">
   <div class="header-inner">
     <div class="header-title">🎵 LiveViewer</div>
-    <div class="header-counter" id="counter"></div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <button class="date-jump-btn" id="date-jump-btn" onclick="openDateJump()">📅</button>
+      <div class="header-counter" id="counter"></div>
+    </div>
   </div>
   <div class="filter-bar" id="filter-bar"></div>
 </div>
@@ -1257,6 +1268,40 @@
   // ============================================================
   // トースト
   // ============================================================
+  // ============================================================
+  // 日付ジャンプ機能
+  // ============================================================
+  function openDateJump() {
+    const today = new Date().toISOString().slice(0, 10);
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-title">📅 日付ジャンプ</div>
+      <div class="modal-item">
+        <div class="modal-label">指定日以降で最も近い公演に移動します</div>
+        <input class="modal-input" type="date" id="jump-date" value="${today}">
+      </div>
+      <button class="modal-save-btn" onclick="doDateJump()">ジャンプ</button>
+      <button class="modal-cancel-btn" onclick="closeModal()">キャンセル</button>
+    `;
+    openModal();
+  }
+
+  function doDateJump() {
+    const dateVal = document.getElementById('jump-date').value;
+    if (!dateVal) return;
+
+    // 指定日以降で最も近い公演を検索
+    const idx = state.filteredConcerts.findIndex(c => c.date >= dateVal);
+
+    if (idx === -1) {
+      showToast('該当する公演が見つかりません');
+      return;
+    }
+
+    closeModal();
+    goTo(idx);
+    showToast(state.filteredConcerts[idx].date_label + ' にジャンプしました');
+  }
+
   function showToast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
