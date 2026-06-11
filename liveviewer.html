@@ -529,6 +529,7 @@
     isOffline:          false,
     syncTime:           '',
     setlistCache:       {},
+    artistImages:       {},
   };
 
   // ============================================================
@@ -631,6 +632,10 @@
       state.concertsByYear[state.currentFilterYear] = concerts;
       state.concerts = concerts;
       state.artists  = artists;
+
+      // デフォルト画像をlocalStorageから取得・なければAPIから取得してBase64で永続保存
+      document.getElementById('loading-msg').textContent = 'アーティスト画像取得中...';
+      await _loadArtistImages();
       state.syncTime = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 
       document.getElementById('sync-time').textContent = '最終同期: ' + state.syncTime;
@@ -673,12 +678,14 @@
   }
 
   function buildConcertCard(c, idx) {
-    // ポスター写真 → デフォルト画像 → プレースホルダーの優先順位
-    const defaultImgUrl = c.artists.length > 0 ? c.artists[0].default_img_url || '' : '';
+    // ポスター写真 → デフォルト画像（Base64・永続）→ プレースホルダーの優先順位
+    const artistId      = c.artists.length > 0 ? c.artists[0].id : '';
+    const defaultImgB64 = artistId && state.artistImages[artistId]
+      ? state.artistImages[artistId].base64 : '';
     const posterHtml = c.has_poster && c.poster_url
       ? `<img src="${c.poster_url}" alt="ポスター" loading="lazy">`
-      : defaultImgUrl
-        ? `<img src="${defaultImgUrl}" alt="${esc(c.artists.map(a => a.name).join(' / '))}" loading="lazy">`
+      : defaultImgB64
+        ? `<img src="${defaultImgB64}" alt="${esc(c.artists.map(a => a.name).join(' / '))}" loading="lazy">`
         : `<div class="poster-placeholder">
              <div class="poster-placeholder-icon">🎸</div>
              <div class="poster-placeholder-name">${esc(c.artists.map(a => a.name).join(' / '))}</div>
@@ -968,11 +975,13 @@
     const lb  = document.getElementById('lightbox');
     const cnt = document.getElementById('lb-content');
 
-    const defaultImgUrl2 = c.artists.length > 0 ? c.artists[0].default_img_url || '' : '';
+    const artistId2     = c.artists.length > 0 ? c.artists[0].id : '';
+    const defaultImgLb  = artistId2 && state.artistImages[artistId2]
+      ? state.artistImages[artistId2].base64 : '';
     if (c.has_poster && c.poster_url) {
       cnt.innerHTML = `<img src="${c.poster_url}" alt="ポスター">`;
-    } else if (defaultImgUrl2) {
-      cnt.innerHTML = `<img src="${defaultImgUrl2}" alt="${esc(c.artists.map(a => a.name).join(' / '))}">`;
+    } else if (defaultImgLb) {
+      cnt.innerHTML = `<img src="${defaultImgLb}" alt="${esc(c.artists.map(a => a.name).join(' / '))}">`;
     } else {
       cnt.innerHTML = `
         <div class="lightbox-ph">
@@ -1194,9 +1203,7 @@
         ${songRows}
         ${moreSongBtn}
       </div>
-      <div class="stats-cache-clear">
-        <button class="stats-cache-btn" onclick="clearCache()">🗑 キャッシュをクリア</button>
-      </div>
+
     `;
   }
 
@@ -1261,7 +1268,10 @@
   // ============================================================
   async function doSync() {
     try {
-      clearApiCache(); // メモリキャッシュクリア
+      // GAS側キャッシュクリア
+      await fetch(GAS_URL + '?action=clear_cache').catch(() => {});
+      // ブラウザ側メモリキャッシュクリア
+      clearApiCache();
       const [concerts, artists] = await Promise.all([
         apiGet('concerts', { year: state.currentFilterYear }),
         apiGet('artists'),
@@ -1275,6 +1285,10 @@
       state.artists      = artists;
       state.setlistCache = {};
       state.statsData    = null;
+      // アーティスト画像のlocalStorageキャッシュをクリアして再取得
+      localStorage.removeItem('lv_artist_images');
+      state.artistImages = {};
+      await _loadArtistImages();
 
       const now = new Date();
       state.syncTime = `${now.getMonth()+1}月${now.getDate()}日 ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -1294,6 +1308,31 @@
   // ============================================================
   // トースト
   // ============================================================
+  // ============================================================
+  // アーティストデフォルト画像をBase64でlocalStorageに永続保存
+  // ============================================================
+  async function _loadArtistImages() {
+    const lsKey  = 'lv_artist_images';
+    const cached = localStorage.getItem(lsKey);
+
+    if (cached) {
+      state.artistImages = JSON.parse(cached);
+      console.log('✅ アーティスト画像: localStorageから取得 ' + Object.keys(state.artistImages).length + '件');
+      return;
+    }
+
+    // localStorageになければAPIから取得
+    try {
+      const data = await apiGet('artist_images');
+      state.artistImages = data;
+      localStorage.setItem(lsKey, JSON.stringify(data));
+      console.log('✅ アーティスト画像: APIから取得・保存 ' + Object.keys(data).length + '件');
+    } catch(e) {
+      console.warn('アーティスト画像取得失敗: ' + e.message);
+      state.artistImages = {};
+    }
+  }
+
   // ============================================================
   // 本日に最も近い公演のインデックスを返す（昇順配列前提）
   // 指定日以降で最も近い公演 → なければ最後の公演
