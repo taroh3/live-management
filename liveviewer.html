@@ -499,7 +499,7 @@
   // ============================================================
   // 設定
   // ============================================================
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwVPjE1NTYWv6FWYOXovTWg9iCAP4CXx7QeDLVrg9aT8-HBoqEBkzIeDcIo7-H29cuOWQ/exec'; //
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwVPjE1NTYWv6FWYOXovTWg9iCAP4CXx7QeDLVrg9aT8-HBoqEBkzIeDcIo7-H29cuOWQ/exec'; // ← GAS WebApp URLをここに設定
 
   // ============================================================
   // 状態管理
@@ -522,28 +522,61 @@
   };
 
   // ============================================================
-  // API
+  // API（ブラウザ側メモリキャッシュ付き）
   // ============================================================
+  const apiCache    = {};  // メモリキャッシュ
+  const apiFetching = {};  // 取得中フラグ（二重リクエスト防止）
+
   async function apiGet(action, params = {}) {
-    const url = new URL(GAS_URL);
-    url.searchParams.set('action', action);
-    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+    // キャッシュキーを生成
+    const cacheKey = action + '_' + JSON.stringify(params);
+
+    // メモリキャッシュヒット → 即返す
+    if (apiCache[cacheKey]) {
+      return apiCache[cacheKey];
+    }
+
+    // 取得中の場合は完了を待つ
+    if (apiFetching[cacheKey]) {
+      await new Promise(resolve => {
+        const check = setInterval(() => {
+          if (!apiFetching[cacheKey]) { clearInterval(check); resolve(); }
+        }, 100);
+      });
+      return apiCache[cacheKey];
+    }
+
+    apiFetching[cacheKey] = true;
 
     try {
+      const url = new URL(GAS_URL);
+      url.searchParams.set('action', action);
+      Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
       const res  = await fetch(url.toString());
       const data = await res.json();
       if (!data.success) throw new Error(data.error || 'APIエラー');
+
+      // メモリキャッシュに保存
+      apiCache[cacheKey] = data.data;
       return data.data;
+
     } catch(e) {
       if (!navigator.onLine) {
         state.isOffline = true;
         document.getElementById('offline-bar').classList.add('show');
-        // オフライン時はローカルストレージから取得
         const cached = localStorage.getItem('lv_' + action);
         if (cached) return JSON.parse(cached);
       }
       throw e;
+    } finally {
+      apiFetching[cacheKey] = false;
     }
+  }
+
+  // メモリキャッシュをクリア（更新ボタン・修正後に使用）
+  function clearApiCache() {
+    Object.keys(apiCache).forEach(k => delete apiCache[k]);
   }
 
   async function apiPost(action, body = {}) {
@@ -664,17 +697,32 @@
   // ============================================================
   // セットリスト遅延読み込み
   // ============================================================
+  const loadingSetlists = new Set(); // 取得中のIDを管理（二重取得防止）
+
   async function loadSetlist(idx) {
     const c = state.filteredConcerts[idx];
-    if (!c || state.setlistCache[c.id]) return;
+    if (!c) return;
+    if (state.setlistCache[c.id]) {
+      renderSetlist(idx, state.setlistCache[c.id]);
+      return;
+    }
+    if (loadingSetlists.has(c.id)) return; // 取得中はスキップ
+
+    loadingSetlists.add(c.id);
 
     try {
-      const data = await apiGet('setlist', { liveId: c.id });
+      // ローディング画面は出さずカード内のみで表示
+      const data = await fetch(GAS_URL + '?action=setlist&liveId=' + encodeURIComponent(c.id))
+        .then(r => r.json())
+        .then(r => { if (!r.success) throw new Error(r.error); return r.data; });
+
       state.setlistCache[c.id] = data;
       renderSetlist(idx, data);
     } catch(e) {
       const el = document.getElementById('setlist-' + idx);
       if (el) el.innerHTML = '<div class="no-setlist">セットリストなし</div>';
+    } finally {
+      loadingSetlists.delete(c.id);
     }
   }
 
@@ -745,6 +793,22 @@
   }
 
   // ============================================================
+  // iOSスワイプ戻る/進むジェスチャーを無効化
+  // ============================================================
+  document.addEventListener('touchstart', (e) => {
+    const x = e.touches[0].pageX;
+    if (x <= 20 || x >= window.innerWidth - 20) {
+      e.preventDefault();
+    }
+  }, { passive: false });
+
+  // ブラウザ履歴を固定（popstateによるリロード防止）
+  history.replaceState(null, '', location.href);
+  window.addEventListener('popstate', () => {
+    history.pushState(null, '', location.href);
+  });
+
+  // ============================================================
   // スワイパー
   // ============================================================
   let touchStartX = 0, touchStartY = 0;
@@ -782,13 +846,11 @@
   function renderFilters() {
     const bar      = document.getElementById('filter-bar');
     const years    = state.years.length > 0 ? state.years : [...new Set(state.concerts.map(c => c.date ? c.date.slice(0, 4) : '').filter(Boolean))].sort().reverse();
-    const prefs    = [...new Set(state.concerts.map(c => c.prefecture).filter(Boolean))].sort();
     const artistNames = [...new Set(state.concerts.flatMap(c => c.artists.map(a => a.name)).filter(Boolean))].sort();
 
     let html = `<div class="filter-chip active" onclick="applyFilter('all', null, this)">すべて</div>`;
-    years.forEach(y    => html += `<div class="filter-chip" onclick="applyFilter('year', '${y}', this)">${y}年</div>`);
-    prefs.forEach(p    => html += `<div class="filter-chip" onclick="applyFilter('pref', '${p}', this)">${p}</div>`);
-    artistNames.slice(0, 10).forEach(a => html += `<div class="filter-chip" onclick="applyFilter('artist', '${esc(a)}', this)">${esc(a)}</div>`);
+    years.forEach(y => html += `<div class="filter-chip" onclick="applyFilter('year', '${y}', this)">${y}年</div>`);
+    artistNames.forEach(a => html += `<div class="filter-chip" onclick="applyFilter('artist', '${esc(a)}', this)">${esc(a)}</div>`);
 
     bar.innerHTML = html;
   }
@@ -1136,6 +1198,7 @@
   // ============================================================
   async function doSync() {
     try {
+      clearApiCache(); // メモリキャッシュクリア
       const [concerts, artists] = await Promise.all([
         apiGet('concerts', { year: state.currentFilterYear }),
         apiGet('artists'),
