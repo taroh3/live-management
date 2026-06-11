@@ -126,8 +126,7 @@
     /* ============ 公演カード ============ */
     .poster-area {
       width: 100%;
-      aspect-ratio: 3/4;
-      max-height: 25vh;
+      height: 25vh;
       overflow: hidden;
       position: relative;
       cursor: pointer;
@@ -140,10 +139,10 @@
       align-items: center; justify-content: center; gap: 10px;
       background: linear-gradient(135deg, var(--bg-card) 0%, #1e2e28 100%);
     }
-    .poster-placeholder-icon { font-size: 48px; opacity: 0.35; }
+    .poster-placeholder-icon { font-size: 36px; opacity: 0.5; }
     .poster-placeholder-name {
-      font-size: 18px; font-weight: 700;
-      color: var(--accent); opacity: 0.65;
+      font-size: 16px; font-weight: 700;
+      color: var(--accent); opacity: 0.8;
       text-align: center; padding: 0 20px;
     }
     .future-badge {
@@ -640,10 +639,9 @@
       renderFilters();
       renderArtists();
 
-      // 直近の公演（今日以前の最新）にジャンプ
+      // 直近の公演（本日に最も近い公演）にジャンプ
       const today = new Date().toISOString().slice(0, 10);
-      const initialIdx = state.filteredConcerts.findIndex(c => c.date <= today);
-      goTo(initialIdx >= 0 ? initialIdx : 0);
+      goTo(_findNearestIdx(state.filteredConcerts, today));
 
     } catch(e) {
       document.getElementById('loading-msg').textContent = 'エラー: ' + e.message;
@@ -675,12 +673,16 @@
   }
 
   function buildConcertCard(c, idx) {
+    // ポスター写真 → デフォルト画像 → プレースホルダーの優先順位
+    const defaultImgUrl = c.artists.length > 0 ? c.artists[0].default_img_url || '' : '';
     const posterHtml = c.has_poster && c.poster_url
       ? `<img src="${c.poster_url}" alt="ポスター" loading="lazy">`
-      : `<div class="poster-placeholder">
-           <div class="poster-placeholder-icon">🎸</div>
-           <div class="poster-placeholder-name">${esc(c.artists.map(a => a.name).join(' / '))}</div>
-         </div>`;
+      : defaultImgUrl
+        ? `<img src="${defaultImgUrl}" alt="${esc(c.artists.map(a => a.name).join(' / '))}" loading="lazy">`
+        : `<div class="poster-placeholder">
+             <div class="poster-placeholder-icon">🎸</div>
+             <div class="poster-placeholder-name">${esc(c.artists.map(a => a.name).join(' / '))}</div>
+           </div>`;
 
     const futureBadge = c.is_future ? `<div class="future-badge">📅 予定</div>` : '';
     const artistLabel = c.artists.map(a => a.name).join(' / ');
@@ -925,7 +927,28 @@
 
     state.setlistCache = {};
     renderConcerts();
-    goTo(0);
+
+    // フィルター別の初期表示位置
+    const today = new Date().toISOString().slice(0, 10);
+    if (type === 'all' || type === 'artist') {
+      // すべて・アーティスト → 本日に最も近い公演
+      goTo(_findNearestIdx(state.filteredConcerts, today));
+    } else if (type === 'year') {
+      const currentYear = new Date().getFullYear();
+      const selectedYear = parseInt(value);
+      if (selectedYear < currentYear) {
+        // 過去年 → その年の最初の公演（先頭）
+        goTo(0);
+      } else if (selectedYear > currentYear) {
+        // 未来年 → その年の最初の公演（先頭）
+        goTo(0);
+      } else {
+        // 当年 → 本日に最も近い公演
+        goTo(_findNearestIdx(state.filteredConcerts, today));
+      }
+    } else {
+      goTo(0);
+    }
   }
 
   function filterConcerts(concerts) {
@@ -945,8 +968,11 @@
     const lb  = document.getElementById('lightbox');
     const cnt = document.getElementById('lb-content');
 
+    const defaultImgUrl2 = c.artists.length > 0 ? c.artists[0].default_img_url || '' : '';
     if (c.has_poster && c.poster_url) {
       cnt.innerHTML = `<img src="${c.poster_url}" alt="ポスター">`;
+    } else if (defaultImgUrl2) {
+      cnt.innerHTML = `<img src="${defaultImgUrl2}" alt="${esc(c.artists.map(a => a.name).join(' / '))}">`;
     } else {
       cnt.innerHTML = `
         <div class="lightbox-ph">
@@ -1269,6 +1295,17 @@
   // トースト
   // ============================================================
   // ============================================================
+  // 本日に最も近い公演のインデックスを返す（昇順配列前提）
+  // 指定日以降で最も近い公演 → なければ最後の公演
+  // ============================================================
+  function _findNearestIdx(concerts, dateStr) {
+    if (!concerts || concerts.length === 0) return 0;
+    const idx = concerts.findIndex(c => c.date >= dateStr);
+    if (idx >= 0) return idx;
+    return concerts.length - 1; // 全て過去 → 最後（最新）
+  }
+
+  // ============================================================
   // 日付ジャンプ機能
   // ============================================================
   function openDateJump() {
@@ -1289,10 +1326,9 @@
     const dateVal = document.getElementById('jump-date').value;
     if (!dateVal) return;
 
-    // 指定日以降で最も近い公演を検索
-    const idx = state.filteredConcerts.findIndex(c => c.date >= dateVal);
+    const idx = _findNearestIdx(state.filteredConcerts, dateVal);
 
-    if (idx === -1) {
+    if (state.filteredConcerts.length === 0) {
       showToast('該当する公演が見つかりません');
       return;
     }
