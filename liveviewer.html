@@ -1,0 +1,1155 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="たろうのLiveViewer">
+  <link rel="manifest" href="liveviewer_manifest.json">
+  <title>たろうのLiveViewer</title>
+  <style>
+    :root {
+      --bg:           #1a1f1e;
+      --bg-card:      #222927;
+      --bg-future:    #252e2a;
+      --bg-header:    #1e2422;
+      --accent:       #4caf7d;
+      --accent-dim:   #2d6b4a;
+      --text:         #e8f0ec;
+      --text-sub:     #8fa898;
+      --text-dim:     #5a7066;
+      --border:       #2e3d38;
+      --encore:       #a0cfb5;
+      --tab-h:        60px;
+      --sync-h:       28px;
+      --footer-h:     90px;
+      --header-h:     96px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, 'Hiragino Sans', sans-serif;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* ============ ヘッダー ============ */
+    .header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      padding-top: env(safe-area-inset-top);
+    }
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      height: 48px;
+    }
+    .header-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .header-counter {
+      font-size: 12px;
+      color: var(--text-sub);
+    }
+    .filter-bar {
+      display: flex;
+      gap: 8px;
+      padding: 6px 16px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    .filter-bar::-webkit-scrollbar { display: none; }
+    .filter-chip {
+      flex-shrink: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: 12px;
+      color: var(--text-sub);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .filter-chip.active {
+      background: var(--accent-dim);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
+
+    /* ============ メイン ============ */
+    .main {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      padding-top: calc(env(safe-area-inset-top) + 48px + 36px);
+      padding-bottom: var(--footer-h);
+    }
+    .page { display: none; width: 100%; height: 100%; }
+    .page.active { display: block; }
+
+    /* ============ スワイパー ============ */
+    .swiper-outer { width: 100%; height: 100%; overflow: hidden; position: relative; }
+    .swiper-track {
+      display: flex;
+      height: 100%;
+      transition: transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      will-change: transform;
+    }
+    .swiper-slide {
+      flex-shrink: 0;
+      width: 100%;
+      height: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .swiper-slide::-webkit-scrollbar { display: none; }
+
+    /* ============ 公演カード ============ */
+    .poster-area {
+      width: 100%;
+      aspect-ratio: 3/4;
+      max-height: 44vh;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      background: var(--bg-card);
+    }
+    .poster-area img { width: 100%; height: 100%; object-fit: cover; }
+    .poster-placeholder {
+      width: 100%; height: 100%;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 10px;
+      background: linear-gradient(135deg, var(--bg-card) 0%, #1e2e28 100%);
+    }
+    .poster-placeholder-icon { font-size: 48px; opacity: 0.35; }
+    .poster-placeholder-name {
+      font-size: 18px; font-weight: 700;
+      color: var(--accent); opacity: 0.65;
+      text-align: center; padding: 0 20px;
+    }
+    .future-badge {
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(76,175,125,0.9); color: #fff;
+      font-size: 10px; font-weight: 700;
+      padding: 3px 8px; border-radius: 10px;
+    }
+
+    .concert-info {
+      position: sticky; top: 0; z-index: 10;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+    }
+    .concert-date   { font-size: 24px; color: var(--text-sub); margin-bottom: 2px; }
+    .concert-artist { font-size: 28px; font-weight: 800; color: var(--text); margin-bottom: 2px; }
+    .concert-venue  { font-size: 13px; color: var(--accent); }
+
+    .artist-tabs {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .artist-tabs::-webkit-scrollbar { display: none; }
+    .artist-tab {
+      flex-shrink: 0;
+      padding: 9px 18px;
+      font-size: 13px; font-weight: 600;
+      color: var(--text-sub);
+      border-bottom: 2px solid transparent;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .artist-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .setlist-area { padding: 14px 16px; }
+    .setlist-label {
+      font-size: 10px; font-weight: 700;
+      color: var(--text-dim);
+      letter-spacing: 0.12em; text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .setlist-track {
+      display: flex; align-items: baseline; gap: 10px;
+      padding: 5px 0; border-bottom: 1px solid var(--border);
+    }
+    .setlist-track:last-child { border-bottom: none; }
+    .track-num {
+      font-size: 14px; color: var(--text-dim);
+      min-width: 24px; text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+    .track-name { font-size: 20px; color: var(--text); }
+    .track-name.encore { color: var(--encore); }
+    .encore-prefix {
+      font-size: 12px; font-weight: 700;
+      color: var(--accent); margin-right: 3px;
+    }
+    .no-setlist {
+      padding: 30px 16px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 14px;
+    }
+
+    /* ============ 演者一覧 ============ */
+    .artist-list { overflow-y: auto; height: 100%; padding: 12px 16px; }
+    .artist-item {
+      display: flex; align-items: center; gap: 14px;
+      padding: 12px 0; border-bottom: 1px solid var(--border);
+      cursor: pointer;
+    }
+    .artist-item:last-child { border-bottom: none; }
+    .artist-icon {
+      width: 48px; height: 48px; border-radius: 50%;
+      background: var(--bg-card);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; flex-shrink: 0; overflow: hidden;
+    }
+    .artist-icon img { width: 100%; height: 100%; object-fit: cover; }
+    .artist-info { flex: 1; }
+    .artist-item-name { font-size: 16px; font-weight: 700; color: var(--text); }
+    .artist-item-sub  { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+    .artist-item-count {
+      font-size: 20px; font-weight: 800;
+      color: var(--accent); flex-shrink: 0;
+    }
+
+    /* ============ 統計 ============ */
+    .stats-page { overflow-y: auto; height: 100%; }
+    .stats-year-nav {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .stats-year-label { font-size: 26px; font-weight: 800; color: var(--accent); }
+    .stats-year-btn {
+      font-size: 22px; color: var(--text-sub);
+      background: none; border: none; cursor: pointer; padding: 6px 12px;
+    }
+    .stats-section { padding: 16px; border-bottom: 1px solid var(--border); }
+    .stats-section-title {
+      font-size: 11px; font-weight: 700; color: var(--text-dim);
+      letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 12px;
+    }
+    .stats-total {
+      font-size: 48px; font-weight: 800; color: var(--accent);
+      text-align: center; padding: 8px 0;
+    }
+    .stats-total-label { font-size: 14px; color: var(--text-sub); text-align: center; }
+    .stats-rank-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 0; border-bottom: 1px solid var(--border);
+    }
+    .stats-rank-item:last-child { border-bottom: none; }
+    .stats-rank-num {
+      font-size: 14px; color: var(--text-dim);
+      min-width: 24px; text-align: right;
+    }
+    .stats-rank-name { flex: 1; font-size: 15px; color: var(--text); }
+    .stats-rank-count { font-size: 18px; font-weight: 700; color: var(--accent); }
+    .stats-more-btn {
+      width: 100%; padding: 10px;
+      background: none; border: 1px solid var(--border);
+      border-radius: 8px; color: var(--accent);
+      font-size: 13px; cursor: pointer; margin-top: 10px;
+    }
+    .stats-cache-clear {
+      padding: 16px; text-align: center;
+    }
+    .stats-cache-btn {
+      background: none; border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text-dim);
+      font-size: 12px; padding: 8px 20px; cursor: pointer;
+    }
+
+    /* ============ ライトボックス ============ */
+    .lightbox {
+      position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,0.95);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .lightbox.active { opacity: 1; pointer-events: all; }
+    .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .lightbox-ph { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+    .lightbox-ph-icon { font-size: 80px; }
+    .lightbox-ph-name { font-size: 26px; font-weight: 800; color: var(--accent); text-align: center; padding: 0 20px; }
+
+    /* ============ 修正モーダル ============ */
+    .modal-overlay {
+      position: fixed; inset: 0; z-index: 900;
+      background: rgba(0,0,0,0.7);
+      display: flex; align-items: flex-end;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .modal-overlay.active { opacity: 1; pointer-events: all; }
+    .modal {
+      width: 100%; background: #1e2e28;
+      border-radius: 20px 20px 0 0;
+      padding: 16px 20px calc(env(safe-area-inset-bottom) + 20px);
+      transform: translateY(100%);
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      max-height: 85vh; overflow-y: auto;
+    }
+    .modal-overlay.active .modal { transform: translateY(0); }
+    .modal-handle {
+      width: 40px; height: 4px; background: var(--border);
+      border-radius: 2px; margin: 0 auto 16px;
+    }
+    .modal-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
+    .modal-item {
+      display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px;
+    }
+    .modal-label { font-size: 12px; color: var(--text-sub); }
+    .modal-input {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+      color: var(--text); font-size: 16px;
+      width: 100%;
+    }
+    .modal-select {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+      color: var(--text); font-size: 16px;
+      width: 100%;
+    }
+    .modal-save-btn {
+      width: 100%; padding: 14px;
+      background: var(--accent); border: none; border-radius: 10px;
+      color: #fff; font-size: 16px; font-weight: 700;
+      cursor: pointer; margin-top: 8px;
+    }
+    .modal-cancel-btn {
+      width: 100%; padding: 12px;
+      background: none; border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text-sub); font-size: 15px;
+      cursor: pointer; margin-top: 8px;
+    }
+    .modal-menu-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 0; border-bottom: 1px solid var(--border);
+      cursor: pointer; color: var(--text); font-size: 16px;
+    }
+    .modal-menu-item:last-child { border-bottom: none; }
+    .modal-menu-icon { font-size: 20px; }
+
+    /* ============ トースト ============ */
+    .toast {
+      position: fixed; bottom: calc(var(--footer-h) + 16px); left: 50%;
+      transform: translateX(-50%) translateY(20px);
+      background: var(--accent); color: #fff;
+      padding: 10px 20px; border-radius: 20px;
+      font-size: 14px; font-weight: 600;
+      opacity: 0; transition: all 0.3s; pointer-events: none;
+      white-space: nowrap; z-index: 2000;
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ============ フッター ============ */
+    .footer {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      background: var(--bg-header); border-top: 1px solid var(--border);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .sync-bar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 4px 16px; border-bottom: 1px solid var(--border);
+      height: var(--sync-h);
+    }
+    .sync-time { font-size: 11px; color: var(--text-dim); }
+    .sync-btn {
+      display: flex; align-items: center; gap: 4px;
+      background: none; border: 1px solid var(--accent-dim);
+      border-radius: 6px; padding: 3px 8px;
+      color: var(--accent); font-size: 11px; cursor: pointer;
+    }
+    .tab-bar { display: flex; height: var(--tab-h); }
+    .tab-item {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 3px;
+      cursor: pointer; transition: opacity 0.2s;
+    }
+    .tab-icon { font-size: 22px; }
+    .tab-label { font-size: 10px; color: var(--text-dim); }
+    .tab-item.active .tab-label { color: var(--accent); }
+
+    /* ============ ローディング ============ */
+    .loading {
+      position: fixed; inset: 0; z-index: 3000;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+      transition: opacity 0.4s;
+    }
+    .loading.hidden { opacity: 0; pointer-events: none; }
+    .loading-icon { font-size: 60px; }
+    .loading-title { font-size: 22px; font-weight: 800; color: var(--accent); }
+    .loading-msg { font-size: 13px; color: var(--text-sub); }
+    .spinner {
+      width: 30px; height: 30px;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ============ オフライン表示 ============ */
+    .offline-bar {
+      display: none;
+      background: #5a3a00; color: #ffcc00;
+      font-size: 12px; text-align: center; padding: 5px;
+    }
+    .offline-bar.show { display: block; }
+  </style>
+</head>
+<body>
+
+<!-- ローディング -->
+<div class="loading" id="loading">
+  <div class="loading-icon">🎵</div>
+  <div class="loading-title">たろうのLiveViewer</div>
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loading-msg">データ取得中...</div>
+</div>
+
+<!-- オフラインバー -->
+<div class="offline-bar" id="offline-bar">
+  📴 オフラインです。最終同期データを表示しています
+</div>
+
+<!-- ヘッダー -->
+<div class="header">
+  <div class="header-inner">
+    <div class="header-title">🎵 LiveViewer</div>
+    <div class="header-counter" id="counter"></div>
+  </div>
+  <div class="filter-bar" id="filter-bar"></div>
+</div>
+
+<!-- メインコンテンツ -->
+<div class="main">
+
+  <!-- 公演一覧ページ -->
+  <div class="page active" id="page-concerts">
+    <div class="swiper-outer" id="swiper">
+      <div class="swiper-track" id="track"></div>
+    </div>
+  </div>
+
+  <!-- 演者一覧ページ -->
+  <div class="page" id="page-artists">
+    <div class="artist-list" id="artist-list"></div>
+  </div>
+
+  <!-- 統計ページ -->
+  <div class="page" id="page-stats">
+    <div class="stats-page" id="stats-content"></div>
+  </div>
+
+</div>
+
+<!-- ライトボックス -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <div id="lb-content"></div>
+</div>
+
+<!-- 修正モーダル -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal">
+    <div class="modal-handle"></div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<!-- フッター -->
+<div class="footer">
+  <div class="sync-bar">
+    <div class="sync-time" id="sync-time">同期中...</div>
+    <button class="sync-btn" onclick="doSync()">🔄 更新</button>
+  </div>
+  <div class="tab-bar">
+    <div class="tab-item active" id="tab-concerts" onclick="switchTab('concerts')">
+      <div class="tab-icon">🎵</div>
+      <div class="tab-label">公演一覧</div>
+    </div>
+    <div class="tab-item" id="tab-artists" onclick="switchTab('artists')">
+      <div class="tab-icon">👤</div>
+      <div class="tab-label">演者一覧</div>
+    </div>
+    <div class="tab-item" id="tab-stats" onclick="switchTab('stats')">
+      <div class="tab-icon">📊</div>
+      <div class="tab-label">統計</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // ============================================================
+  // 設定
+  // ============================================================
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwVPjE1NTYWv6FWYOXovTWg9iCAP4CXx7QeDLVrg9aT8-HBoqEBkzIeDcIo7-H29cuOWQ/exec';
+
+  // ============================================================
+  // 状態管理
+  // ============================================================
+  let state = {
+    concerts:       [],
+    filteredConcerts: [],
+    artists:        [],
+    currentIdx:     0,
+    currentTab:     'concerts',
+    currentYear:    new Date().getFullYear(),
+    statsData:      null,
+    filters:        { artist: null, year: null, prefecture: null },
+    isOffline:      false,
+    syncTime:       '',
+    setlistCache:   {},
+  };
+
+  // ============================================================
+  // API
+  // ============================================================
+  async function apiGet(action, params = {}) {
+    const url = new URL(GAS_URL);
+    url.searchParams.set('action', action);
+    Object.entries(params).forEach(([k, v]) => url.searchParams.set(k, v));
+
+    try {
+      const res  = await fetch(url.toString());
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || 'APIエラー');
+      return data.data;
+    } catch(e) {
+      if (!navigator.onLine) {
+        state.isOffline = true;
+        document.getElementById('offline-bar').classList.add('show');
+        // オフライン時はローカルストレージから取得
+        const cached = localStorage.getItem('lv_' + action);
+        if (cached) return JSON.parse(cached);
+      }
+      throw e;
+    }
+  }
+
+  async function apiPost(action, body = {}) {
+    const res  = await fetch(GAS_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ action, ...body })
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.error || 'APIエラー');
+    return data.data;
+  }
+
+  // ============================================================
+  // 初期化
+  // ============================================================
+  window.addEventListener('load', async () => {
+    // Service Worker登録
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('liveviewer_sw.js').catch(() => {});
+    }
+
+    try {
+      document.getElementById('loading-msg').textContent = '公演データ取得中...';
+      const [concerts, artists] = await Promise.all([
+        apiGet('concerts'),
+        apiGet('artists'),
+      ]);
+
+      // ローカルに保存（オフライン対応）
+      localStorage.setItem('lv_concerts', JSON.stringify(concerts));
+      localStorage.setItem('lv_artists',  JSON.stringify(artists));
+
+      state.concerts  = concerts;
+      state.artists   = artists;
+      state.syncTime  = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+      document.getElementById('sync-time').textContent = '最終同期: ' + state.syncTime;
+
+      renderConcerts();
+      renderFilters();
+      renderArtists();
+
+      // 直近の公演（今日以前の最新）にジャンプ
+      const today = new Date().toISOString().slice(0, 10);
+      const initialIdx = state.filteredConcerts.findIndex(c => c.date <= today);
+      goTo(initialIdx >= 0 ? initialIdx : 0);
+
+    } catch(e) {
+      document.getElementById('loading-msg').textContent = 'エラー: ' + e.message;
+      return;
+    }
+
+    document.getElementById('loading').classList.add('hidden');
+  });
+
+  // ============================================================
+  // 公演一覧レンダリング
+  // ============================================================
+  function renderConcerts() {
+    state.filteredConcerts = filterConcerts(state.concerts);
+    const track = document.getElementById('track');
+    track.innerHTML = '';
+
+    state.filteredConcerts.forEach((c, i) => {
+      const slide = document.createElement('div');
+      slide.className = 'swiper-slide';
+      slide.innerHTML = buildConcertCard(c, i);
+      track.appendChild(slide);
+    });
+
+    document.getElementById('counter').textContent =
+      state.filteredConcerts.length > 0
+        ? `${state.currentIdx + 1} / ${state.filteredConcerts.length}`
+        : '0 / 0';
+  }
+
+  function buildConcertCard(c, idx) {
+    const posterHtml = c.has_poster && c.poster_url
+      ? `<img src="${c.poster_url}" alt="ポスター" loading="lazy">`
+      : `<div class="poster-placeholder">
+           <div class="poster-placeholder-icon">🎸</div>
+           <div class="poster-placeholder-name">${esc(c.artists.map(a => a.name).join(' / '))}</div>
+         </div>`;
+
+    const futureBadge = c.is_future ? `<div class="future-badge">📅 予定</div>` : '';
+    const artistLabel = c.artists.map(a => a.name).join(' / ');
+    const venueLabel  = c.venue ? c.venue.name : '';
+    const dayNight    = c.day_night ? `　${c.day_night}` : '';
+
+    return `
+      <div class="concert-card" style="${c.is_future ? 'background:var(--bg-future)' : ''}">
+        <div class="poster-area" onclick="openLightbox(${idx})">
+          ${posterHtml}
+          ${futureBadge}
+        </div>
+        <div class="concert-info">
+          <div class="concert-date">${esc(c.date_label)}${esc(dayNight)}</div>
+          <div class="concert-artist">${esc(artistLabel)}</div>
+          <div class="concert-venue">${esc(venueLabel)}</div>
+        </div>
+        <div class="setlist-area" id="setlist-${idx}">
+          <div class="no-setlist">セットリスト読み込み中...</div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ============================================================
+  // セットリスト遅延読み込み
+  // ============================================================
+  async function loadSetlist(idx) {
+    const c = state.filteredConcerts[idx];
+    if (!c || state.setlistCache[c.id]) return;
+
+    try {
+      const data = await apiGet('setlist', { liveId: c.id });
+      state.setlistCache[c.id] = data;
+      renderSetlist(idx, data);
+    } catch(e) {
+      const el = document.getElementById('setlist-' + idx);
+      if (el) el.innerHTML = '<div class="no-setlist">セットリストなし</div>';
+    }
+  }
+
+  function renderSetlist(idx, data) {
+    const el = document.getElementById('setlist-' + idx);
+    if (!el) return;
+
+    const { setlists } = data;
+    if (!setlists || setlists.length === 0) {
+      el.innerHTML = '<div class="no-setlist">セットリストなし</div>';
+      return;
+    }
+
+    // 対バン（複数セットリスト）の場合はタブ
+    if (setlists.length > 1) {
+      const tabs = setlists.map((sl, i) =>
+        `<div class="artist-tab ${i === 0 ? 'active' : ''}"
+              onclick="switchSetlistTab(${idx}, ${i}, this)">${esc(sl.artist_name)}</div>`
+      ).join('');
+
+      const panes = setlists.map((sl, i) =>
+        `<div class="setlist-pane" id="pane-${idx}-${i}" style="${i > 0 ? 'display:none' : ''}">
+           ${buildSongList(sl.songs)}
+         </div>`
+      ).join('');
+
+      el.innerHTML = `
+        <div class="artist-tabs">${tabs}</div>
+        ${panes}
+      `;
+    } else {
+      el.innerHTML = buildSongList(setlists[0].songs);
+    }
+  }
+
+  function buildSongList(songs) {
+    if (!songs || songs.length === 0) {
+      return '<div class="no-setlist">曲目なし</div>';
+    }
+
+    let html = '<div class="setlist-label">Setlist</div>';
+    let trackCounter = 0;
+
+    songs.forEach(s => {
+      if (!s.is_encore) trackCounter++;
+      const numLabel   = s.track !== null ? s.track : (s.is_encore ? '—' : trackCounter);
+      const encoreHtml = s.is_encore ? `<span class="encore-prefix">EN.</span>` : '';
+      const cls        = s.is_encore ? 'track-name encore' : 'track-name';
+
+      html += `
+        <div class="setlist-track">
+          <span class="track-num">${numLabel}</span>
+          <span class="${cls}">${encoreHtml}${esc(s.song_name)}</span>
+        </div>
+      `;
+    });
+
+    return html;
+  }
+
+  function switchSetlistTab(cardIdx, tabIdx, el) {
+    const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+
+    const panes = document.querySelectorAll(`[id^="pane-${cardIdx}-"]`);
+    panes.forEach((p, i) => p.style.display = i === tabIdx ? 'block' : 'none');
+  }
+
+  // ============================================================
+  // スワイパー
+  // ============================================================
+  let touchStartX = 0, touchStartY = 0;
+
+  const swiper = document.getElementById('swiper');
+  swiper.addEventListener('touchstart', e => {
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  swiper.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - touchStartX;
+    const dy = e.changedTouches[0].clientY - touchStartY;
+    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+      closeLightbox();
+      if (dx < 0) goTo(state.currentIdx + 1);
+      else        goTo(state.currentIdx - 1);
+    }
+  }, { passive: true });
+
+  function goTo(idx) {
+    if (idx < 0 || idx >= state.filteredConcerts.length) return;
+    state.currentIdx = idx;
+    document.getElementById('track').style.transform = `translateX(-${idx * 100}%)`;
+    document.getElementById('counter').textContent = `${idx + 1} / ${state.filteredConcerts.length}`;
+    loadSetlist(idx);
+    // 前後もプリロード
+    loadSetlist(idx + 1);
+    loadSetlist(idx - 1);
+  }
+
+  // ============================================================
+  // フィルター
+  // ============================================================
+  function renderFilters() {
+    const bar      = document.getElementById('filter-bar');
+    const years    = [...new Set(state.concerts.map(c => c.date ? c.date.slice(0, 4) : '').filter(Boolean))].sort().reverse();
+    const prefs    = [...new Set(state.concerts.map(c => c.prefecture).filter(Boolean))].sort();
+    const artistNames = [...new Set(state.concerts.flatMap(c => c.artists.map(a => a.name)).filter(Boolean))].sort();
+
+    let html = `<div class="filter-chip active" onclick="applyFilter('all', null, this)">すべて</div>`;
+    years.forEach(y    => html += `<div class="filter-chip" onclick="applyFilter('year', '${y}', this)">${y}年</div>`);
+    prefs.forEach(p    => html += `<div class="filter-chip" onclick="applyFilter('pref', '${p}', this)">${p}</div>`);
+    artistNames.slice(0, 10).forEach(a => html += `<div class="filter-chip" onclick="applyFilter('artist', '${esc(a)}', this)">${esc(a)}</div>`);
+
+    bar.innerHTML = html;
+  }
+
+  function applyFilter(type, value, el) {
+    document.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+    el.classList.add('active');
+
+    if (type === 'all') state.filters = { artist: null, year: null, prefecture: null };
+    else if (type === 'year')   state.filters.year       = value;
+    else if (type === 'pref')   state.filters.prefecture = value;
+    else if (type === 'artist') state.filters.artist     = value;
+
+    state.setlistCache = {};
+    renderConcerts();
+    goTo(0);
+  }
+
+  function filterConcerts(concerts) {
+    return concerts.filter(c => {
+      if (state.filters.year && (!c.date || !c.date.startsWith(state.filters.year))) return false;
+      if (state.filters.prefecture && c.prefecture !== state.filters.prefecture) return false;
+      if (state.filters.artist && !c.artists.some(a => a.name === state.filters.artist)) return false;
+      return true;
+    });
+  }
+
+  // ============================================================
+  // ライトボックス
+  // ============================================================
+  function openLightbox(idx) {
+    const c   = state.filteredConcerts[idx];
+    const lb  = document.getElementById('lightbox');
+    const cnt = document.getElementById('lb-content');
+
+    if (c.has_poster && c.poster_url) {
+      cnt.innerHTML = `<img src="${c.poster_url}" alt="ポスター">`;
+    } else {
+      cnt.innerHTML = `
+        <div class="lightbox-ph">
+          <div class="lightbox-ph-icon">🎸</div>
+          <div class="lightbox-ph-name">${esc(c.artists.map(a => a.name).join(' / '))}</div>
+        </div>`;
+    }
+
+    lb.classList.add('active');
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+  }
+
+  // ============================================================
+  // 修正モーダル
+  // ============================================================
+  let longPressTimer = null;
+
+  document.addEventListener('touchstart', e => {
+    const slide = e.target.closest('.swiper-slide');
+    if (!slide) return;
+    longPressTimer = setTimeout(() => openEditMenu(), 600);
+  }, { passive: true });
+
+  document.addEventListener('touchend', () => {
+    clearTimeout(longPressTimer);
+  });
+
+  function openEditMenu() {
+    const c = state.filteredConcerts[state.currentIdx];
+    if (!c) return;
+
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-title">✏️ 修正メニュー</div>
+      <div class="modal-menu-item" onclick="openEditConcert()">
+        <span class="modal-menu-icon">📅</span>公演情報を修正
+      </div>
+      <div class="modal-menu-item" onclick="openEditSetlist()">
+        <span class="modal-menu-icon">🎵</span>セットリストを修正
+      </div>
+    `;
+    openModal();
+  }
+
+  function openEditConcert() {
+    const c = state.filteredConcerts[state.currentIdx];
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-title">📅 公演情報を修正</div>
+      <div class="modal-item">
+        <div class="modal-label">公演日</div>
+        <input class="modal-input" type="date" id="edit-date" value="${c.date || ''}">
+      </div>
+      <div class="modal-item">
+        <div class="modal-label">昼夜</div>
+        <select class="modal-select" id="edit-dayn">
+          <option value="">なし</option>
+          <option value="昼" ${c.day_night==='昼'?'selected':''}>昼</option>
+          <option value="夜" ${c.day_night==='夜'?'selected':''}>夜</option>
+          <option value="他" ${c.day_night==='他'?'selected':''}>他</option>
+        </select>
+      </div>
+      <div class="modal-item">
+        <div class="modal-label">形式</div>
+        <select class="modal-select" id="edit-format">
+          <option value="">なし</option>
+          <option value="ワンマン" ${c.format==='ワンマン'?'selected':''}>ワンマン</option>
+          <option value="対バン" ${c.format==='対バン'?'selected':''}>対バン</option>
+          <option value="フェスイベント" ${c.format==='フェスイベント'?'selected':''}>フェスイベント</option>
+          <option value="その他" ${c.format==='その他'?'selected':''}>その他</option>
+        </select>
+      </div>
+      <div class="modal-item">
+        <div class="modal-label">メモ</div>
+        <input class="modal-input" type="text" id="edit-memo" value="${esc(c.memo || '')}">
+      </div>
+      <button class="modal-save-btn" onclick="saveEditConcert()">保存する</button>
+      <button class="modal-cancel-btn" onclick="closeModal()">キャンセル</button>
+    `;
+  }
+
+  async function saveEditConcert() {
+    const c = state.filteredConcerts[state.currentIdx];
+    const body = {
+      liveId:    c.id,
+      date:      document.getElementById('edit-date').value,
+      day_night: document.getElementById('edit-dayn').value,
+      format:    document.getElementById('edit-format').value,
+      memo:      document.getElementById('edit-memo').value,
+    };
+
+    try {
+      await apiPost('edit_concert', body);
+      closeModal();
+      showToast('✅ 保存しました');
+      // データ再取得
+      await doSync();
+    } catch(e) {
+      showToast('❌ 保存失敗: ' + e.message);
+    }
+  }
+
+  function openEditSetlist() {
+    showToast('セットリスト修正は次バージョンで対応予定です');
+    closeModal();
+  }
+
+  function openModal() {
+    document.getElementById('modal-overlay').classList.add('active');
+  }
+
+  function closeModal(e) {
+    if (e && e.target !== document.getElementById('modal-overlay')) return;
+    document.getElementById('modal-overlay').classList.remove('active');
+  }
+
+  // ============================================================
+  // 演者一覧
+  // ============================================================
+  function renderArtists() {
+    const list = document.getElementById('artist-list');
+    list.innerHTML = state.artists.map(a => `
+      <div class="artist-item" onclick="goToArtist('${a.id}')">
+        <div class="artist-icon">
+          ${a.default_img_url
+            ? `<img src="${a.default_img_url}" alt="${esc(a.name)}">`
+            : '👤'}
+        </div>
+        <div class="artist-info">
+          <div class="artist-item-name">${esc(a.name)}</div>
+          <div class="artist-item-sub">${a.concert_count}本 / ${a.song_count}曲</div>
+        </div>
+        <div class="artist-item-count">${a.concert_count}</div>
+      </div>
+    `).join('');
+  }
+
+  function goToArtist(artistId) {
+    // 公演一覧をそのアーティストでフィルタリング
+    const artist = state.artists.find(a => a.id === artistId);
+    if (!artist) return;
+
+    switchTab('concerts');
+    const chip = [...document.querySelectorAll('.filter-chip')]
+      .find(c => c.textContent === artist.name);
+    if (chip) {
+      applyFilter('artist', artist.name, chip);
+    }
+  }
+
+  // ============================================================
+  // 統計
+  // ============================================================
+  async function renderStats() {
+    const content = document.getElementById('stats-content');
+    content.innerHTML = `
+      <div class="stats-year-nav">
+        <button class="stats-year-btn" onclick="changeYear(-1)">◀</button>
+        <div class="stats-year-label" id="stats-year-label">${state.currentYear}</div>
+        <button class="stats-year-btn" onclick="changeYear(1)">▶</button>
+      </div>
+      <div style="text-align:center;padding:20px;color:var(--text-sub)">読み込み中...</div>
+    `;
+
+    try {
+      const data = await apiGet('stats', { year: state.currentYear });
+      state.statsData = data;
+      renderStatsData(data);
+    } catch(e) {
+      content.innerHTML += `<div style="padding:16px;color:var(--text-sub)">取得失敗: ${e.message}</div>`;
+    }
+  }
+
+  function renderStatsData(data) {
+    const content = document.getElementById('stats-content');
+    const concertTop = data.concert_ranking.slice(0, 10);
+    const songTop    = data.song_ranking.slice(0, 10);
+
+    const concertRows = concertTop.map((r, i) => `
+      <div class="stats-rank-item">
+        <span class="stats-rank-num">${i + 1}</span>
+        <span class="stats-rank-name">${esc(r.name)}</span>
+        <span class="stats-rank-count">${r.count}本</span>
+      </div>
+    `).join('');
+
+    const songRows = songTop.map((r, i) => `
+      <div class="stats-rank-item">
+        <span class="stats-rank-num">${i + 1}</span>
+        <span class="stats-rank-name">${esc(r.name)}</span>
+        <span class="stats-rank-count">${r.count}回</span>
+      </div>
+    `).join('');
+
+    const moreConBtn = data.concert_ranking.length > 10
+      ? `<button class="stats-more-btn" onclick="showMore('concert')">もっと見る（全${data.concert_ranking.length}件）</button>` : '';
+    const moreSongBtn = data.song_ranking.length > 10
+      ? `<button class="stats-more-btn" onclick="showMore('song')">もっと見る（全${data.song_ranking.length}件）</button>` : '';
+
+    content.innerHTML = `
+      <div class="stats-year-nav">
+        <button class="stats-year-btn" onclick="changeYear(-1)">◀</button>
+        <div class="stats-year-label" id="stats-year-label">${state.currentYear}</div>
+        <button class="stats-year-btn" onclick="changeYear(1)">▶</button>
+      </div>
+      <div class="stats-section">
+        <div class="stats-section-title">参戦本数</div>
+        <div class="stats-total">${data.total_count}</div>
+        <div class="stats-total-label">本</div>
+      </div>
+      <div class="stats-section">
+        <div class="stats-section-title">アーティスト別参戦本数</div>
+        ${concertRows}
+        ${moreConBtn}
+      </div>
+      <div class="stats-section">
+        <div class="stats-section-title">楽曲演奏回数</div>
+        ${songRows}
+        ${moreSongBtn}
+      </div>
+      <div class="stats-cache-clear">
+        <button class="stats-cache-btn" onclick="clearCache()">🗑 キャッシュをクリア</button>
+      </div>
+    `;
+  }
+
+  async function changeYear(delta) {
+    state.currentYear += delta;
+    await renderStats();
+  }
+
+  function showMore(type) {
+    if (!state.statsData) return;
+    const data = type === 'concert' ? state.statsData.concert_ranking : state.statsData.song_ranking;
+    const unit = type === 'concert' ? '本' : '回';
+    const rows = data.map((r, i) => `
+      <div class="stats-rank-item">
+        <span class="stats-rank-num">${i + 1}</span>
+        <span class="stats-rank-name">${esc(r.name)}</span>
+        <span class="stats-rank-count">${r.count}${unit}</span>
+      </div>
+    `).join('');
+
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-title">全件表示</div>
+      ${rows}
+      <button class="modal-cancel-btn" onclick="closeModal()">閉じる</button>
+    `;
+    openModal();
+  }
+
+  async function clearCache() {
+    try {
+      await apiGet('clear_cache');
+      state.setlistCache = {};
+      showToast('✅ キャッシュをクリアしました');
+    } catch(e) {
+      showToast('❌ ' + e.message);
+    }
+  }
+
+  // ============================================================
+  // タブ切り替え
+  // ============================================================
+  async function switchTab(tab) {
+    document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+    document.getElementById('tab-' + tab).classList.add('active');
+
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-' + tab).classList.add('active');
+
+    state.currentTab = tab;
+
+    // フィルターバー・カウンターの表示制御
+    document.getElementById('filter-bar').style.display = tab === 'concerts' ? 'flex' : 'none';
+    document.getElementById('counter').style.display    = tab === 'concerts' ? 'block' : 'none';
+
+    if (tab === 'stats' && !state.statsData) {
+      await renderStats();
+    }
+  }
+
+  // ============================================================
+  // 更新
+  // ============================================================
+  async function doSync() {
+    try {
+      const [concerts, artists] = await Promise.all([
+        apiGet('concerts'),
+        apiGet('artists'),
+      ]);
+
+      localStorage.setItem('lv_concerts', JSON.stringify(concerts));
+      localStorage.setItem('lv_artists',  JSON.stringify(artists));
+
+      state.concerts = concerts;
+      state.artists  = artists;
+      state.setlistCache = {};
+      state.statsData    = null;
+
+      const now = new Date();
+      state.syncTime = `${now.getMonth()+1}月${now.getDate()}日 ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      document.getElementById('sync-time').textContent = '最終同期: ' + state.syncTime;
+
+      renderConcerts();
+      renderFilters();
+      renderArtists();
+      goTo(state.currentIdx);
+
+      showToast('✅ 更新しました');
+    } catch(e) {
+      showToast('❌ 更新失敗: ' + e.message);
+    }
+  }
+
+  // ============================================================
+  // トースト
+  // ============================================================
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2500);
+  }
+
+  // ============================================================
+  // ユーティリティ
+  // ============================================================
+  function esc(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+</script>
+</body>
+</html>
