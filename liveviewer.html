@@ -519,7 +519,8 @@
   // ============================================================
   // 設定
   // ============================================================
-  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwVPjE1NTYWv6FWYOXovTWg9iCAP4CXx7QeDLVrg9aT8-HBoqEBkzIeDcIo7-H29cuOWQ/exec'; // ← GAS WebApp URLをここに設定
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbwVPjE1NTYWv6FWYOXovTWg9iCAP4CXx7QeDLVrg9aT8-HBoqEBkzIeDcIo7-H29cuOWQ/exec
+'; // ← GAS WebApp URLをここに設定
 
   // ============================================================
   // 状態管理
@@ -1278,6 +1279,10 @@
       await fetch(GAS_URL + '?action=clear_cache').catch(() => {});
       // ブラウザ側メモリキャッシュクリア
       clearApiCache();
+      // localStorageの公演データを全クリア
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('lv_concerts_'))
+        .forEach(k => localStorage.removeItem(k));
       const [concerts, artists] = await Promise.all([
         apiGet('concerts', { year: state.currentFilterYear }),
         apiGet('artists'),
