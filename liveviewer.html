@@ -487,11 +487,17 @@
 <div class="footer">
   <div class="sync-bar">
     <div class="sync-time" id="sync-time">同期中...</div>
-    <button class="sync-btn" onclick="doSync()">🔄 更新</button>
   </div>
   <div class="tab-bar">
     <div class="tab-item active" id="tab-concerts" onclick="switchTab('concerts')">
-      <div class="tab-icon">🎵</div>
+      <div class="tab-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <ellipse cx="8" cy="18" rx="4" ry="3" fill="#ffe082"/>
+          <ellipse cx="18" cy="15" rx="3" ry="2.5" fill="#ffe082"/>
+          <rect x="11.5" y="4" width="2" height="14" rx="1" fill="#ffe082"/>
+          <rect x="11.5" y="4" width="9" height="2" rx="1" fill="#ffe082"/>
+        </svg>
+      </div>
       <div class="tab-label">公演一覧</div>
     </div>
     <div class="tab-item" id="tab-artists" onclick="switchTab('artists')">
@@ -501,6 +507,10 @@
     <div class="tab-item" id="tab-stats" onclick="switchTab('stats')">
       <div class="tab-icon">📊</div>
       <div class="tab-label">統計</div>
+    </div>
+    <div class="tab-item" onclick="doSync()">
+      <div class="tab-icon">🔄</div>
+      <div class="tab-label">更新</div>
     </div>
   </div>
 </div>
@@ -637,7 +647,6 @@
       document.getElementById('loading-msg').textContent = 'アーティスト画像取得中...';
       await _loadArtistImages();
       state.syncTime = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-
       document.getElementById('sync-time').textContent = '最終同期: ' + state.syncTime;
 
       renderConcerts();
@@ -892,11 +901,8 @@
   function renderFilters() {
     const bar      = document.getElementById('filter-bar');
     const years    = state.years.length > 0 ? state.years : [...new Set(state.concerts.map(c => c.date ? c.date.slice(0, 4) : '').filter(Boolean))].sort().reverse();
-    const artistNames = [...new Set(state.concerts.flatMap(c => c.artists.map(a => a.name)).filter(Boolean))].sort();
-
     let html = `<div class="filter-chip active" onclick="applyFilter('all', null, this)">すべて</div>`;
     years.forEach(y => html += `<div class="filter-chip" onclick="applyFilter('year', '${y}', this)">${y}年</div>`);
-    artistNames.forEach(a => html += `<div class="filter-chip" onclick="applyFilter('artist', '${esc(a)}', this)">${esc(a)}</div>`);
 
     bar.innerHTML = html;
   }
@@ -1291,7 +1297,7 @@
       await _loadArtistImages();
 
       const now = new Date();
-      state.syncTime = `${now.getMonth()+1}月${now.getDate()}日 ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
+      state.syncTime = `${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
       document.getElementById('sync-time').textContent = '最終同期: ' + state.syncTime;
 
       renderConcerts();
