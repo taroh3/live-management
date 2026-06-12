@@ -1291,6 +1291,10 @@
       state.artists      = artists;
       state.setlistCache = {};
       state.statsData    = null;
+      // localStorageのセットリストキャッシュを全クリア
+      Object.keys(localStorage)
+        .filter(k => k.startsWith('lv_setlist_'))
+        .forEach(k => localStorage.removeItem(k));
       // アーティスト画像のlocalStorageキャッシュをクリアして再取得
       localStorage.removeItem('lv_artist_images');
       state.artistImages = {};
