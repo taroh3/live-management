@@ -1074,6 +1074,7 @@
     const c = state.filteredConcerts[state.currentIdx];
     const body = {
       liveId:    c.id,
+      year:      c.date ? c.date.slice(0, 4) : '',
       date:      document.getElementById('edit-date').value,
       day_night: document.getElementById('edit-dayn').value,
       format:    document.getElementById('edit-format').value,
