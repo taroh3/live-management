@@ -132,7 +132,7 @@
       cursor: pointer;
       background: var(--bg-card);
     }
-    .poster-area img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; }
+    .poster-area img { width: 100%; height: 100%; object-fit: cover; }
     .poster-placeholder {
       width: 100%; height: 100%;
       display: flex; flex-direction: column;
@@ -342,7 +342,25 @@
       color: var(--text-sub); font-size: 15px;
       cursor: pointer; margin-top: 8px;
     }
-    .modal-menu-item {
+    .modal-display-section {
+      padding: 12px 0 8px;
+      border-radius: 8px;
+    }
+    .modal-display-item {
+      font-size: 16px;
+      color: var(--text);
+      padding: 4px 0;
+    }
+    .modal-perf-name {
+      font-size: 13px;
+      color: var(--text-dim);
+      padding: 4px 0 2px;
+    }
+    .modal-divider {
+      height: 1px;
+      background: var(--border);
+      margin: 12px 0;
+    }
       display: flex; align-items: center; gap: 12px;
       padding: 14px 0; border-bottom: 1px solid var(--border);
       cursor: pointer; color: var(--text); font-size: 16px;
@@ -1004,62 +1022,58 @@
   }
 
   // ============================================================
-  // 修正モーダル
+  // 修正モーダル（長押し検知）
   // ============================================================
   let longPressTimer = null;
 
+  // 【Ver1.4】公演情報エリアとセトリエリアを別々に長押し検知
   document.addEventListener('touchstart', e => {
-    const slide = e.target.closest('.swiper-slide');
-    if (!slide) return;
-    longPressTimer = setTimeout(() => openEditMenu(), 600);
+    if (e.target.closest('.concert-info')) {
+      // 公演情報エリア長押し → 公演情報フォーム
+      longPressTimer = setTimeout(() => openEditConcert(), 600);
+    } else if (e.target.closest('.setlist-area')) {
+      // セトリエリア長押し → セトリ編集モード
+      longPressTimer = setTimeout(() => openEditSetlist(), 600);
+    }
   }, { passive: true });
 
+  // 指が離れたらタイマーキャンセル
   document.addEventListener('touchend', () => {
     clearTimeout(longPressTimer);
   });
 
-  function openEditMenu() {
+  // 【Ver1.4】指が動いたらタイマーキャンセル（スクロール中の誤発火防止）
+  document.addEventListener('touchmove', () => {
+    clearTimeout(longPressTimer);
+  }, { passive: true });
+
+  // 【Ver1.4】公演情報フォーム（表示確認＋形式・メモのみ修正可能）
+  function openEditConcert() {
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
 
-    document.getElementById('modal-body').innerHTML = `
-      <div class="modal-title">✏️ 修正メニュー</div>
-      <div class="modal-menu-item" onclick="openEditConcert()">
-        <span class="modal-menu-icon">📅</span>公演情報を修正
-      </div>
-      <div class="modal-menu-item" onclick="openEditSetlist()">
-        <span class="modal-menu-icon">🎵</span>セットリストを修正
-      </div>
-    `;
-    openModal();
-  }
+    const artistLabel  = c.artists.map(a => a.name).join(' / ');
+    const venueLabel   = c.venue ? c.venue.name : '（未登録）';
+    const dayNight     = c.day_night ? `　${c.day_night}` : '';
+    const perfName     = c.performance_name
+      ? `<div class="modal-perf-name">${esc(c.performance_name)}</div>` : '';
 
-  function openEditConcert() {
-    const c = state.filteredConcerts[state.currentIdx];
+    const formatOptions = ['', 'ワンマン', '対バン', 'フェス等', 'その他', '未確認']
+      .map(v => `<option value="${v}" ${c.format === v ? 'selected' : ''}>${v || 'なし'}</option>`)
+      .join('');
+
     document.getElementById('modal-body').innerHTML = `
-      <div class="modal-title">📅 公演情報を修正</div>
-      <div class="modal-item">
-        <div class="modal-label">公演日</div>
-        <input class="modal-input" type="date" id="edit-date" value="${c.date || ''}">
+      <div class="modal-title">📅 公演情報</div>
+      <div class="modal-display-section">
+        <div class="modal-display-item">${esc(c.date_label)}${esc(dayNight)}</div>
+        <div class="modal-display-item">${esc(artistLabel)}</div>
+        <div class="modal-display-item">${esc(venueLabel)}</div>
+        ${perfName}
       </div>
-      <div class="modal-item">
-        <div class="modal-label">昼夜</div>
-        <select class="modal-select" id="edit-dayn">
-          <option value="">なし</option>
-          <option value="昼" ${c.day_night==='昼'?'selected':''}>昼</option>
-          <option value="夜" ${c.day_night==='夜'?'selected':''}>夜</option>
-          <option value="他" ${c.day_night==='他'?'selected':''}>他</option>
-        </select>
-      </div>
+      <div class="modal-divider"></div>
       <div class="modal-item">
         <div class="modal-label">形式</div>
-        <select class="modal-select" id="edit-format">
-          <option value="">なし</option>
-          <option value="ワンマン" ${c.format==='ワンマン'?'selected':''}>ワンマン</option>
-          <option value="対バン" ${c.format==='対バン'?'selected':''}>対バン</option>
-          <option value="フェスイベント" ${c.format==='フェスイベント'?'selected':''}>フェスイベント</option>
-          <option value="その他" ${c.format==='その他'?'selected':''}>その他</option>
-        </select>
+        <select class="modal-select" id="edit-format">${formatOptions}</select>
       </div>
       <div class="modal-item">
         <div class="modal-label">メモ</div>
@@ -1068,24 +1082,46 @@
       <button class="modal-save-btn" onclick="saveEditConcert()">保存する</button>
       <button class="modal-cancel-btn" onclick="closeModal()">キャンセル</button>
     `;
+    openModal();
   }
 
+  // 【Ver1.4】保存後は該当年のキャッシュのみクリア・再取得して現在のカードを再描画
   async function saveEditConcert() {
-    const c = state.filteredConcerts[state.currentIdx];
+    const c    = state.filteredConcerts[state.currentIdx];
+    const year = c.date ? c.date.slice(0, 4) : '';
     const body = {
-      liveId:    c.id,
-      date:      document.getElementById('edit-date').value,
-      day_night: document.getElementById('edit-dayn').value,
-      format:    document.getElementById('edit-format').value,
-      memo:      document.getElementById('edit-memo').value,
+      liveId: c.id,
+      year:   year,
+      format: document.getElementById('edit-format').value,
+      memo:   document.getElementById('edit-memo').value,
     };
 
     try {
       await apiPost('edit_concert', body);
       closeModal();
       showToast('✅ 保存しました');
-      // データ再取得
-      await doSync();
+
+      // 該当年のキャッシュのみクリア
+      clearApiCache();
+      if (year) localStorage.removeItem('lv_concerts_' + year);
+      delete state.concertsByYear[year];
+
+      // 該当年の公演を再取得
+      const res = await apiGet('concerts', { year });
+      state.concertsByYear[year] = res;
+      state.concerts = res;
+      if (year) localStorage.setItem('lv_concerts_' + year, JSON.stringify(res));
+
+      // filteredConcertsを更新（フィルター条件を維持）
+      state.filteredConcerts = filterConcerts(state.concerts);
+
+      // 現在のカードのみ再描画（currentIdxはそのまま）
+      const newC  = state.filteredConcerts[state.currentIdx];
+      const slide = document.getElementById('track').children[state.currentIdx];
+      if (slide && newC) {
+        slide.innerHTML = buildConcertCard(newC, state.currentIdx);
+        loadSetlist(state.currentIdx);
+      }
     } catch(e) {
       showToast('❌ 保存失敗: ' + e.message);
     }
