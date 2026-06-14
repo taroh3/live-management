@@ -132,7 +132,7 @@
       cursor: pointer;
       background: var(--bg-card);
     }
-    .poster-area img { width: 100%; height: 100%; object-fit: cover; }
+    .poster-area img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; }
     .poster-placeholder {
       width: 100%; height: 100%;
       display: flex; flex-direction: column;
@@ -1074,7 +1074,6 @@
     const c = state.filteredConcerts[state.currentIdx];
     const body = {
       liveId:    c.id,
-      year:      c.date ? c.date.slice(0, 4) : '',
       date:      document.getElementById('edit-date').value,
       day_night: document.getElementById('edit-dayn').value,
       format:    document.getElementById('edit-format').value,
