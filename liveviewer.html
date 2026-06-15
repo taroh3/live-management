@@ -1463,6 +1463,7 @@
     const songs       = editSetlistState.songs;
     const changedSongs = songs
       .filter(s => s.track !== s.original_track)
+      .filter(s => !String(s.id).startsWith('temp_')) // 【保険】temp_IDはスキップ
       .map(s => ({ song_id: s.id, track: s.track, original_track: s.original_track }));
 
     try {
