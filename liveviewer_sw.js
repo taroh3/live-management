@@ -1,42 +1,50 @@
 /**
  * liveviewer_sw.js
  * ライブビューワー Service Worker
- * Ver 1.0.0
+ * Ver 1.1.0
+ *
+ * 変更履歴：
+ * v1.1.0 - GAS APIリクエストをキャッシュしないように変更
+ * v1.0.0 - 初版作成
  */
 
-const CACHE_NAME    = 'liveviewer-v1';
-const STATIC_ASSETS = [
+var CACHE_NAME    = 'liveviewer-v3';
+var STATIC_ASSETS = [
   './',
   './liveviewer.html',
 ];
 
-self.addEventListener('install', e => {
+// インストール
+self.addEventListener('install', function(e) {
   e.waitUntil(
-    caches.open(CACHE_NAME).then(cache => {
+    caches.open(CACHE_NAME).then(function(cache) {
       return cache.addAll(STATIC_ASSETS);
     })
   );
   self.skipWaiting();
 });
 
-self.addEventListener('activate', e => {
+// アクティベート
+self.addEventListener('activate', function(e) {
   e.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k))
-      )
-    )
+    caches.keys().then(function(keys) {
+      return Promise.all(
+        keys.filter(function(k) { return k !== CACHE_NAME; })
+            .map(function(k) { return caches.delete(k); })
+      );
+    })
   );
   self.clients.claim();
 });
 
-self.addEventListener('fetch', e => {
-  const url = new URL(e.request.url);
+// フェッチ
+self.addEventListener('fetch', function(e) {
+  var url = new URL(e.request.url);
 
   // GAS WebApp APIリクエストは常にネットワークから取得（キャッシュしない）
   if (url.pathname.includes('/macros/s/') || url.searchParams.has('action')) {
     e.respondWith(
-      fetch(e.request).catch(() => {
+      fetch(e.request).catch(function() {
         return new Response(
           JSON.stringify({ success: false, offline: true, error: 'オフラインです' }),
           { headers: { 'Content-Type': 'application/json' } }
@@ -48,11 +56,11 @@ self.addEventListener('fetch', e => {
 
   // 静的ファイルはキャッシュファースト
   e.respondWith(
-    caches.match(e.request).then(cached => {
+    caches.match(e.request).then(function(cached) {
       if (cached) return cached;
-      return fetch(e.request).then(res => {
-        const clone = res.clone();
-        caches.open(CACHE_NAME).then(cache => cache.put(e.request, clone));
+      return fetch(e.request).then(function(res) {
+        var clone = res.clone();
+        caches.open(CACHE_NAME).then(function(cache) { cache.put(e.request, clone); });
         return res;
       });
     })
