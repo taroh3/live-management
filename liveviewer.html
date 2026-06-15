@@ -132,7 +132,7 @@
       cursor: pointer;
       background: var(--bg-card);
     }
-    .poster-area img { width: 100%; height: 100%; object-fit: cover; }
+    .poster-area img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; }
     .poster-placeholder {
       width: 100%; height: 100%;
       display: flex; flex-direction: column;
@@ -342,6 +342,54 @@
       color: var(--text-sub); font-size: 15px;
       cursor: pointer; margin-top: 8px;
     }
+    /* セトリ編集モード */
+    .edit-setlist-wrapper { padding: 8px 0; }
+    .edit-section-label {
+      font-size: 11px; font-weight: 700;
+      color: var(--text-dim); letter-spacing: 0.05em;
+      padding: 10px 0 4px; text-transform: uppercase;
+    }
+    .edit-song-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 6px 0; border-bottom: 1px solid var(--border);
+    }
+    .edit-song-controls { display: flex; flex-direction: column; gap: 2px; }
+    .edit-arrow-btn {
+      background: var(--bg-card); border: 1px solid var(--border);
+      color: var(--text); border-radius: 4px;
+      font-size: 12px; width: 28px; height: 24px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .edit-arrow-btn:disabled { opacity: 0.25; }
+    .edit-song-num {
+      font-size: 13px; color: var(--text-dim);
+      min-width: 20px; text-align: right;
+    }
+    .edit-song-name {
+      flex: 1; font-size: 16px; color: var(--text);
+      padding: 4px 0;
+    }
+    .edit-delete-btn {
+      background: none; border: none;
+      color: #e57373; font-size: 16px;
+      padding: 4px 8px;
+    }
+    .edit-add-btn {
+      width: 100%; margin-top: 12px; padding: 10px;
+      background: none; border: 1px dashed var(--border);
+      color: var(--accent); border-radius: 8px;
+      font-size: 15px;
+    }
+    .edit-action-buttons {
+      display: flex; flex-direction: column; gap: 8px;
+      margin-top: 16px;
+    }
+    .edit-delete-song-btn {
+      width: 100%; padding: 12px;
+      background: none; border: 1px solid #e57373;
+      color: #e57373; border-radius: 8px;
+      font-size: 15px; font-weight: 600;
+    }
     .modal-display-section {
       padding: 12px 0 8px;
       border-radius: 8px;
@@ -361,6 +409,7 @@
       background: var(--border);
       margin: 12px 0;
     }
+    .modal-menu-item {
       display: flex; align-items: center; gap: 12px;
       padding: 14px 0; border-bottom: 1px solid var(--border);
       cursor: pointer; color: var(--text); font-size: 16px;
@@ -558,6 +607,7 @@
     syncTime:           '',
     setlistCache:       {},
     artistImages:       {},
+    editMode:           false,
   };
 
   // ============================================================
@@ -620,9 +670,8 @@
 
   async function apiPost(action, body = {}) {
     const res  = await fetch(GAS_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ action, ...body })
+      method: 'POST',
+      body:   JSON.stringify({ action, ...body })
     });
     const data = await res.json();
     if (!data.success) throw new Error(data.error || 'APIエラー');
@@ -894,6 +943,7 @@
   }, { passive: true });
 
   swiper.addEventListener('touchend', e => {
+    if (state.editMode) return; // 編集モード中はスワイプ無効
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = e.changedTouches[0].clientY - touchStartY;
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
@@ -1127,9 +1177,332 @@
     }
   }
 
+  // ============================================================
+  // セットリスト編集モード【Ver1.4全面実装】
+  // ============================================================
+
+  // 編集モードの状態
+  const editSetlistState = {
+    active:       false,
+    liveId:       null,
+    setlistId:    null,
+    songs:        [],        // 編集中の曲配列（ローカル）
+    originalSongs: [],       // 元の曲配列（キャンセル用）
+    paneEl:       null,      // 編集対象のpane要素
+  };
+
   function openEditSetlist() {
-    showToast('セットリスト修正は次バージョンで対応予定です');
-    closeModal();
+    const c = state.filteredConcerts[state.currentIdx];
+    if (!c) return;
+
+    const cached = state.setlistCache && state.setlistCache[c.id];
+    if (!cached || !cached.setlists || cached.setlists.length === 0) {
+      showToast('セットリストが読み込まれていません');
+      return;
+    }
+
+    // 対バンは現在表示中のセットリストペインを特定
+    const idx      = state.currentIdx;
+    const setlists = cached.setlists;
+    let   activeSlIdx = 0;
+
+    if (setlists.length > 1) {
+      // アクティブなタブのインデックスを取得
+      const tabs = document.querySelectorAll(`#setlist-${idx} .artist-tab`);
+      tabs.forEach((t, i) => { if (t.classList.contains('active')) activeSlIdx = i; });
+    }
+
+    const sl    = setlists[activeSlIdx];
+    const paneId = setlists.length > 1
+      ? `pane-${idx}-${activeSlIdx}`
+      : `setlist-${idx}`;
+    const paneEl = document.getElementById(paneId);
+
+    // 状態を設定
+    editSetlistState.active        = true;
+    editSetlistState.liveId        = c.id;
+    editSetlistState.setlistId     = sl.id;
+    editSetlistState.songs         = sl.songs.map(s => ({ ...s, original_track: s.track }));
+    editSetlistState.originalSongs = sl.songs.map(s => ({ ...s }));
+    editSetlistState.paneEl        = paneEl;
+
+    // スワイプロック
+    state.editMode = true;
+
+    renderEditSetlist();
+  }
+
+  function renderEditSetlist() {
+    const el    = editSetlistState.paneEl;
+    const songs = editSetlistState.songs;
+    if (!el) return;
+
+    // セクション分け（本編・アンコール1・アンコール2）
+    const mainSongs    = songs.filter(s => s.encore_count === 0);
+    const encore1Songs = songs.filter(s => s.encore_count === 1);
+    const encore2Songs = songs.filter(s => s.encore_count === 2);
+
+    const buildRows = (sectionSongs, globalStart) => {
+      return sectionSongs.map((s, localIdx) => {
+        const globalIdx = songs.indexOf(s);
+        const isFirst   = globalIdx === 0 || songs.slice(0, globalIdx).every(x => x.encore_count !== s.encore_count);
+        const isLast    = globalIdx === songs.length - 1 || songs.slice(globalIdx + 1).every(x => x.encore_count !== s.encore_count);
+        const upDisabled   = isFirst  ? 'disabled' : '';
+        const downDisabled = isLast   ? 'disabled' : '';
+
+        return `
+          <div class="edit-song-row" data-idx="${globalIdx}">
+            <div class="edit-song-controls">
+              <button class="edit-arrow-btn" ${upDisabled} onclick="moveSong(${globalIdx}, -1)">↑</button>
+              <button class="edit-arrow-btn" ${downDisabled} onclick="moveSong(${globalIdx}, 1)">↓</button>
+            </div>
+            <span class="edit-song-num">${s.track !== null ? s.track : '—'}</span>
+            <span class="edit-song-name" onclick="openSongEdit(${globalIdx})">${esc(s.song_name)}</span>
+            <button class="edit-delete-btn" onclick="deleteSong(${globalIdx})">✕</button>
+          </div>
+        `;
+      }).join('');
+    };
+
+    let html = '<div class="edit-setlist-wrapper">';
+
+    if (mainSongs.length > 0) {
+      html += `<div class="edit-section-label">本編</div>`;
+      html += buildRows(mainSongs);
+    }
+    if (encore1Songs.length > 0) {
+      html += `<div class="edit-section-label">アンコール 1</div>`;
+      html += buildRows(encore1Songs);
+    }
+    if (encore2Songs.length > 0) {
+      html += `<div class="edit-section-label">アンコール 2</div>`;
+      html += buildRows(encore2Songs);
+    }
+
+    html += `
+      <button class="edit-add-btn" onclick="openAddSong()">＋ 曲を追加</button>
+      <div class="edit-action-buttons">
+        <button class="modal-save-btn" onclick="saveSetlistOrder()">保存する</button>
+        <button class="modal-cancel-btn" onclick="cancelEditSetlist()">キャンセル</button>
+      </div>
+    </div>`;
+
+    el.innerHTML = html;
+  }
+
+  // 曲を上下に移動（同セクション内のみ）
+  function moveSong(idx, dir) {
+    const songs   = editSetlistState.songs;
+    const target  = songs[idx];
+    const swapIdx = idx + dir;
+    if (swapIdx < 0 || swapIdx >= songs.length) return;
+    if (songs[swapIdx].encore_count !== target.encore_count) return; // セクション越え不可
+
+    // 配列内の位置を入れ替え
+    [songs[idx], songs[swapIdx]] = [songs[swapIdx], songs[idx]];
+
+    // track番号を振り直す（セクション別に1から採番）
+    renumberTracks();
+    renderEditSetlist();
+  }
+
+  // track番号を振り直す（本編・アンコール1・アンコール2 それぞれ1から）
+  function renumberTracks() {
+    const songs    = editSetlistState.songs;
+    const counters = { 0: 0, 1: 0, 2: 0 };
+    songs.forEach(s => {
+      counters[s.encore_count] = (counters[s.encore_count] || 0) + 1;
+      s.track = counters[s.encore_count];
+    });
+  }
+
+  // 1曲編集モーダル（セトリ編集モード内のタップ）
+  function openSongEdit(idx) {
+    const s = editSetlistState.songs[idx];
+    if (!s) return;
+
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-title">✏️ 曲を編集</div>
+      <div class="modal-item">
+        <div class="modal-label">曲名</div>
+        <input class="modal-input" type="text" id="song-edit-name" value="${esc(s.song_name)}">
+      </div>
+      <div class="modal-item">
+        <div class="modal-label">アンコール区分</div>
+        <select class="modal-select" id="song-edit-encore">
+          <option value="0" ${s.encore_count === 0 ? 'selected' : ''}>本編</option>
+          <option value="1" ${s.encore_count === 1 ? 'selected' : ''}>アンコール 1</option>
+          <option value="2" ${s.encore_count === 2 ? 'selected' : ''}>アンコール 2</option>
+        </select>
+      </div>
+      <button class="modal-save-btn" onclick="saveSongEdit(${idx})">保存する</button>
+      <button class="edit-delete-song-btn" onclick="deleteSong(${idx}, true)">この曲を削除</button>
+      <button class="modal-cancel-btn" onclick="closeModal()">キャンセル</button>
+    `;
+    openModal();
+  }
+
+  async function saveSongEdit(idx) {
+    const s        = editSetlistState.songs[idx];
+    const songName = document.getElementById('song-edit-name').value.trim();
+    const encore   = parseInt(document.getElementById('song-edit-encore').value, 10);
+
+    if (!songName) { showToast('曲名を入力してください'); return; }
+
+    try {
+      await apiPost('edit_setlist', {
+        edit_type:    'edit_song',
+        liveId:       editSetlistState.liveId,
+        setlistId:    editSetlistState.setlistId,
+        song_id:      s.id,
+        song_name:    songName,
+        encore_count: encore,
+      });
+
+      // ローカルを更新
+      s.song_name    = songName;
+      s.encore_count = encore;
+      s.is_encore    = encore > 0;
+      closeModal();
+      renumberTracks();
+      renderEditSetlist();
+    } catch(e) {
+      showToast('❌ 保存失敗: ' + e.message);
+    }
+  }
+
+  // 曲の削除
+  async function deleteSong(idx, fromModal = false) {
+    const s = editSetlistState.songs[idx];
+    if (!s) return;
+
+    try {
+      await apiPost('edit_setlist', {
+        edit_type: 'delete_song',
+        liveId:    editSetlistState.liveId,
+        setlistId: editSetlistState.setlistId,
+        song_id:   s.id,
+      });
+
+      // ローカル配列から除去
+      editSetlistState.songs.splice(idx, 1);
+      renumberTracks();
+      if (fromModal) closeModal();
+      renderEditSetlist();
+      showToast('🗑️ 削除しました');
+    } catch(e) {
+      showToast('❌ 削除失敗: ' + e.message);
+    }
+  }
+
+  // 曲の追加
+  function openAddSong() {
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-title">＋ 曲を追加</div>
+      <div class="modal-item">
+        <div class="modal-label">曲名</div>
+        <input class="modal-input" type="text" id="add-song-name" placeholder="曲名を入力">
+      </div>
+      <div class="modal-item">
+        <div class="modal-label">アンコール区分</div>
+        <select class="modal-select" id="add-song-encore">
+          <option value="0">本編</option>
+          <option value="1">アンコール 1</option>
+          <option value="2">アンコール 2</option>
+        </select>
+      </div>
+      <button class="modal-save-btn" onclick="addSong()">追加する</button>
+      <button class="modal-cancel-btn" onclick="closeModal()">キャンセル</button>
+    `;
+    openModal();
+  }
+
+  async function addSong() {
+    const songName = document.getElementById('add-song-name').value.trim();
+    const encore   = parseInt(document.getElementById('add-song-encore').value, 10);
+
+    if (!songName) { showToast('曲名を入力してください'); return; }
+
+    // 該当アンコール区分の末尾のtrack番号を計算
+    const sameSection = editSetlistState.songs.filter(s => s.encore_count === encore);
+    const nextTrack   = sameSection.length + 1;
+
+    try {
+      const res = await apiPost('edit_setlist', {
+        edit_type:    'add_song',
+        liveId:       editSetlistState.liveId,
+        setlistId:    editSetlistState.setlistId,
+        song_name:    songName,
+        track:        nextTrack,
+        encore_count: encore,
+      });
+
+      // ローカルに追加
+      editSetlistState.songs.push({
+        id:             res && res.song_id ? res.song_id : 'temp_' + Date.now(),
+        song_name:      songName,
+        track:          nextTrack,
+        encore_count:   encore,
+        is_encore:      encore > 0,
+        original_track: null,
+        rank:           'A',
+        unconfirmed:    true,
+      });
+
+      closeModal();
+      renumberTracks();
+      renderEditSetlist();
+      showToast('✅ 追加しました');
+    } catch(e) {
+      showToast('❌ 追加失敗: ' + e.message);
+    }
+  }
+
+  // 並び替えを保存（差分のみ送信）
+  async function saveSetlistOrder() {
+    const songs       = editSetlistState.songs;
+    const changedSongs = songs
+      .filter(s => s.track !== s.original_track)
+      .map(s => ({ song_id: s.id, track: s.track, original_track: s.original_track }));
+
+    try {
+      if (changedSongs.length > 0) {
+        await apiPost('edit_setlist', {
+          edit_type: 'reorder_songs',
+          liveId:    editSetlistState.liveId,
+          setlistId: editSetlistState.setlistId,
+          songs:     changedSongs,
+        });
+      }
+
+      // キャッシュクリア
+      if (state.setlistCache) delete state.setlistCache[editSetlistState.liveId];
+      localStorage.removeItem('lv_setlist_' + editSetlistState.liveId);
+
+      exitEditSetlist();
+      // セットリストを再読み込み
+      loadSetlist(state.currentIdx);
+      showToast('✅ 保存しました');
+    } catch(e) {
+      showToast('❌ 保存失敗: ' + e.message);
+    }
+  }
+
+  // キャンセル（変更破棄）
+  function cancelEditSetlist() {
+    exitEditSetlist();
+    // 元のセットリストを再描画
+    loadSetlist(state.currentIdx);
+  }
+
+  function exitEditSetlist() {
+    state.editMode                = false;
+    editSetlistState.active       = false;
+    editSetlistState.liveId       = null;
+    editSetlistState.setlistId    = null;
+    editSetlistState.songs        = [];
+    editSetlistState.originalSongs = [];
+    editSetlistState.paneEl       = null;
   }
 
   function openModal() {
