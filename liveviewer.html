@@ -1366,6 +1366,10 @@
       closeModal();
       renumberTracks();
       renderEditSetlist();
+
+      // 【修正】セットリストキャッシュをクリア（編集モードを抜けた後に古い表示が残る不具合対策）
+      if (state.setlistCache) delete state.setlistCache[editSetlistState.liveId];
+      localStorage.removeItem('lv_setlist_' + editSetlistState.liveId);
     } catch(e) {
       showToast('❌ 保存失敗: ' + e.message);
     }
@@ -1390,6 +1394,10 @@
       if (fromModal) closeModal();
       renderEditSetlist();
       showToast('🗑️ 削除しました');
+
+      // 【修正】セットリストキャッシュをクリア（編集モードを抜けた後に削除前の表示が残る不具合対策）
+      if (state.setlistCache) delete state.setlistCache[editSetlistState.liveId];
+      localStorage.removeItem('lv_setlist_' + editSetlistState.liveId);
     } catch(e) {
       showToast('❌ 削除失敗: ' + e.message);
     }
@@ -1453,6 +1461,10 @@
       renumberTracks();
       renderEditSetlist();
       showToast('✅ 追加しました');
+
+      // 【修正】セットリストキャッシュをクリア（編集モードを抜けた後に追加前の表示が残る不具合対策）
+      if (state.setlistCache) delete state.setlistCache[editSetlistState.liveId];
+      localStorage.removeItem('lv_setlist_' + editSetlistState.liveId);
     } catch(e) {
       showToast('❌ 追加失敗: ' + e.message);
     }
