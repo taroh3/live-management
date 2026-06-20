@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>タッチイベント診断</title>
+<style>
+  body { font-family: sans-serif; background: #1a1f1e; color: #fff; margin: 0; padding: 16px; }
+  h2 { font-size: 16px; margin: 0 0 12px; color: #4caf7d; }
+
+  .test-area {
+    width: 100%;
+    height: 120px;
+    background: #2a2f2e;
+    border: 2px solid #4caf7d;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: bold;
+    margin-bottom: 16px;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  .test-area img {
+    width: 80px; height: 80px;
+    object-fit: cover;
+    pointer-events: none;
+  }
+
+  #log {
+    background: #111;
+    border-radius: 8px;
+    padding: 12px;
+    font-size: 12px;
+    font-family: monospace;
+    height: 300px;
+    overflow-y: auto;
+    border: 1px solid #333;
+  }
+  .log-start   { color: #4caf7d; }
+  .log-end     { color: #aaa; }
+  .log-cancel  { color: #f44; }
+  .log-move    { color: #fa0; }
+  .log-fired   { color: #0ff; font-weight: bold; }
+
+  button { background: #333; color: #fff; border: 1px solid #555;
+           border-radius: 6px; padding: 8px 16px; margin: 4px; font-size: 14px; }
+</style>
+</head>
+<body>
+<h2>🔍 タッチイベント診断</h2>
+<p style="font-size:13px;color:#aaa;margin:0 0 12px">
+  各エリアを長押し（約0.5秒）してイベントログを確認してください
+</p>
+
+<!-- テスト用エリア1：画像なし -->
+<div class="test-area" id="area1">
+  📷 ポスターエリア（画像なし）
+</div>
+
+<!-- テスト用エリア2：画像あり -->
+<div class="test-area" id="area2">
+  <img src="https://via.placeholder.com/80x80/4caf7d/fff?text=IMG" alt="テスト画像">
+  &nbsp;ポスターエリア（画像あり）
+</div>
+
+<!-- テスト用エリア3：テキストのみ -->
+<div class="test-area" id="area3">
+  📋 セトリエリア（テキスト）
+</div>
+
+<div style="margin-bottom:8px">
+  <button onclick="clearLog()">ログ消去</button>
+</div>
+<div id="log"></div>
+
+<script>
+  const logEl = document.getElementById('log');
+
+  function addLog(msg, cls) {
+    const now = new Date();
+    const time = now.getSeconds() + '.' + String(now.getMilliseconds()).padStart(3,'0');
+    const div = document.createElement('div');
+    div.className = cls || '';
+    div.textContent = '[' + time + '] ' + msg;
+    logEl.appendChild(div);
+    logEl.scrollTop = logEl.scrollHeight;
+  }
+
+  function clearLog() { logEl.innerHTML = ''; }
+
+  // 各エリアに_attachLongPressと同じ方式でイベントを設定
+  function attachEvents(el, name) {
+    let timer = null;
+    let fired = false;
+    let moved = false;
+
+    el.addEventListener('touchstart', e => {
+      e.preventDefault();
+      fired = false;
+      moved = false;
+      addLog(name + ': touchstart', 'log-start');
+      timer = setTimeout(() => {
+        fired = true;
+        addLog(name + ': ★長押し発火！メニューを開く', 'log-fired');
+      }, 500);
+    }, { passive: false });
+
+    el.addEventListener('touchmove', e => {
+      moved = true;
+      clearTimeout(timer);
+      addLog(name + ': touchmove → タイマーキャンセル', 'log-move');
+    }, { passive: true });
+
+    el.addEventListener('touchend', e => {
+      clearTimeout(timer);
+      addLog(name + ': touchend (fired=' + fired + ', moved=' + moved + ')', 'log-end');
+      if (!fired && !moved) {
+        addLog(name + ': → タップとして処理', 'log-end');
+      }
+      fired = false;
+      moved = false;
+    });
+
+    el.addEventListener('touchcancel', e => {
+      clearTimeout(timer);
+      addLog(name + ': ⚠️ touchcancel → タイマーキャンセル', 'log-cancel');
+      fired = false;
+      moved = false;
+    });
+  }
+
+  attachEvents(document.getElementById('area1'), 'エリア1(画像なし)');
+  attachEvents(document.getElementById('area2'), 'エリア2(画像あり)');
+  attachEvents(document.getElementById('area3'), 'エリア3(テキスト)');
+
+  addLog('診断ページ準備完了', 'log-fired');
+</script>
+</body>
+</html>
