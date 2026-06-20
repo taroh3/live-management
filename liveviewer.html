@@ -1197,47 +1197,60 @@
   // 修正モーダル（長押し検知）
   // ============================================================
   let longPressTimer  = null;
-  let longPressFired  = false; // 長押しが発火したか（touchendでタップ判定に使う）
-  let longPressTarget = null;  // 長押し対象エリア
+  let longPressFired  = false;
+  let longPressTarget = null;
 
-  // 【Ver1.5】ポスター写真エリア・公演情報エリア・セトリエリアの3エリアで長押し検知
+  // 【Ver1.5】ポスター写真・公演情報・セトリエリアで長押し検知
+  // passive: false にして preventDefault() でブラウザのデフォルト長押し動作を抑制
   document.addEventListener('touchstart', e => {
     longPressFired  = false;
     longPressTarget = null;
 
     if (e.target.closest('.poster-area')) {
+      // ブラウザの「イメージを保存」等のコンテキストメニューを抑制
+      e.preventDefault();
       longPressTarget = 'poster';
       longPressTimer = setTimeout(() => {
         longPressFired = true;
         openPosterMenu();
-      }, 600);
+      }, 500);
     } else if (e.target.closest('.concert-info')) {
+      e.preventDefault();
       longPressTarget = 'info';
       longPressTimer = setTimeout(() => {
         longPressFired = true;
         openEditConcert();
-      }, 600);
+      }, 500);
     } else if (e.target.closest('.setlist-area')) {
+      e.preventDefault();
       longPressTarget = 'setlist';
       longPressTimer = setTimeout(() => {
         longPressFired = true;
         openSetlistMenu();
-      }, 600);
+      }, 500);
     }
-  }, { passive: true });
+  }, { passive: false });
 
-  // タッチ終了：長押しが発火していない場合（＝短いタップ）は元の動作
+  // タッチ終了：長押しが発火していなければタップとして処理
   document.addEventListener('touchend', e => {
     clearTimeout(longPressTimer);
-    if (!longPressFired && longPressTarget === 'poster') {
-      // タップ → ライトボックスを開く
+    const wasFired  = longPressFired;
+    const wasTarget = longPressTarget;
+    longPressFired  = false;
+    longPressTarget = null;
+    if (!wasFired && wasTarget === 'poster') {
       openLightbox(state.currentIdx);
     }
+  });
+
+  // touchcancelでもタイマーをキャンセル
+  document.addEventListener('touchcancel', () => {
+    clearTimeout(longPressTimer);
     longPressFired  = false;
     longPressTarget = null;
   });
 
-  // 【Ver1.4】指が動いたらタイマーキャンセル（スクロール中の誤発火防止）
+  // 指が動いたらタイマーキャンセル（スクロール中の誤発火防止）
   document.addEventListener('touchmove', () => {
     clearTimeout(longPressTimer);
     longPressFired  = false;
