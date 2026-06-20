@@ -131,8 +131,15 @@
       position: relative;
       cursor: pointer;
       background: var(--bg-card);
+      /* iOSのSafariが画像長押し時にコンテキストメニューを出すのを防ぐ */
+      -webkit-touch-callout: none;
+      user-select: none;
     }
-    .poster-area img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; }
+    .poster-area img {
+      width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%;
+      /* 画像そのものへの長押しコンテキストメニューも防ぐ */
+      pointer-events: none;
+    }
     .poster-placeholder {
       width: 100%; height: 100%;
       display: flex; flex-direction: column;
@@ -851,7 +858,7 @@
 
     return `
       <div class="concert-card" style="${c.is_future ? 'background:var(--bg-future)' : ''}">
-        <div class="poster-area" onclick="openLightbox(${idx})">
+        <div class="poster-area">
           ${posterHtml}
           ${futureBadge}
         </div>
@@ -1189,30 +1196,52 @@
   // ============================================================
   // 修正モーダル（長押し検知）
   // ============================================================
-  let longPressTimer = null;
+  let longPressTimer  = null;
+  let longPressFired  = false; // 長押しが発火したか（touchendでタップ判定に使う）
+  let longPressTarget = null;  // 長押し対象エリア
 
   // 【Ver1.5】ポスター写真エリア・公演情報エリア・セトリエリアの3エリアで長押し検知
   document.addEventListener('touchstart', e => {
+    longPressFired  = false;
+    longPressTarget = null;
+
     if (e.target.closest('.poster-area')) {
-      // ポスター写真エリア長押し → ポスター写真メニュー
-      longPressTimer = setTimeout(() => openPosterMenu(), 600);
+      longPressTarget = 'poster';
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        openPosterMenu();
+      }, 600);
     } else if (e.target.closest('.concert-info')) {
-      // 公演情報エリア長押し → 公演情報フォーム
-      longPressTimer = setTimeout(() => openEditConcert(), 600);
+      longPressTarget = 'info';
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        openEditConcert();
+      }, 600);
     } else if (e.target.closest('.setlist-area')) {
-      // セトリエリア長押し → セトリメニュー【Ver1.5変更：直接編集モードからメニュー方式に変更】
-      longPressTimer = setTimeout(() => openSetlistMenu(), 600);
+      longPressTarget = 'setlist';
+      longPressTimer = setTimeout(() => {
+        longPressFired = true;
+        openSetlistMenu();
+      }, 600);
     }
   }, { passive: true });
 
-  // 指が離れたらタイマーキャンセル
-  document.addEventListener('touchend', () => {
+  // タッチ終了：長押しが発火していない場合（＝短いタップ）は元の動作
+  document.addEventListener('touchend', e => {
     clearTimeout(longPressTimer);
+    if (!longPressFired && longPressTarget === 'poster') {
+      // タップ → ライトボックスを開く
+      openLightbox(state.currentIdx);
+    }
+    longPressFired  = false;
+    longPressTarget = null;
   });
 
   // 【Ver1.4】指が動いたらタイマーキャンセル（スクロール中の誤発火防止）
   document.addEventListener('touchmove', () => {
     clearTimeout(longPressTimer);
+    longPressFired  = false;
+    longPressTarget = null;
   }, { passive: true });
 
   // ============================================================
@@ -1326,20 +1355,19 @@
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
 
     // 現在のセトリ情報を取得（has_note・has_photoの判定に使う）
-    const setlistData = state.setlistCache[c.id];
-    const setlists    = setlistData ? (setlistData.setlists || []) : [];
-
-    // アクティブなタブのsetlistIdを取得
+    // キャッシュがない場合はサーバー側でチェックするため解析ボタンは有効のまま表示
+    const setlistData   = state.setlistCache[c.id];
+    const setlists      = setlistData ? (setlistData.setlists || []) : [];
     const activeSetlist = _getActiveSetlist(c, setlists);
     const hasNote       = activeSetlist ? activeSetlist.has_note  : false;
     const hasPhoto      = activeSetlist ? activeSetlist.has_photo : false;
-    const hasInput      = hasNote || hasPhoto;
+    const hasInput      = hasNote || hasPhoto || !setlistData;
     const setlistId     = activeSetlist ? activeSetlist.id : null;
     const hasSongs      = activeSetlist ? (activeSetlist.songs && activeSetlist.songs.length > 0) : false;
 
     const analyzeBtn = hasInput
-      ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId}')">🔍 ③ セトリ解析</button>`
-      : `<button class="edit-btn" disabled title="写真または補足を先に登録してください">🔍 ③ セトリ解析（写真/補足が必要）</button>`;
+      ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId || ''}')">🔍 ③ セトリ解析</button>`
+      : `<button class="edit-btn" style="opacity:0.5" title="写真または補足を先に登録してください">🔍 ③ セトリ解析（写真/補足が必要）</button>`;
 
     const html = `
       <div class="modal-section-title">セトリメニュー</div>
