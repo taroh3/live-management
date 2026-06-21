@@ -1331,43 +1331,6 @@
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
 
-    // 【診断用・確認後削除】DOMの状態をモーダルで表示
-    const diagIdx    = state.currentIdx;
-    const diagCard   = document.getElementById('setlist-' + diagIdx);
-    const diagTabs   = diagCard ? diagCard.querySelectorAll('.artist-tab') : [];
-    const diagActive = diagCard ? diagCard.querySelector('.artist-tab.active') : null;
-    let diagLines = [];
-    diagLines.push('タブ数=' + diagTabs.length);
-    diagLines.push('cache=' + (!!state.setlistCache[c.id]));
-    diagTabs.forEach((t, i) => {
-      diagLines.push('tab[' + i + ']:');
-      diagLines.push('  slId=' + (t.dataset.setlistId || '(空)').substring(0, 20));
-      diagLines.push('  artId=' + (t.dataset.artistId || '(空)').substring(0, 20));
-      diagLines.push('  active=' + t.classList.contains('active'));
-    });
-    diagLines.push('activeTab=' + (diagActive ? diagActive.textContent.trim() : 'なし'));
-    document.getElementById('modal-body').innerHTML = `
-      <div class="modal-section-title">【診断】セトリエリアDOM状態</div>
-      <pre style="font-size:11px;color:var(--text);white-space:pre-wrap;word-break:break-all">${diagLines.join('\n')}</pre>
-      <div class="edit-btn-group">
-        <button class="edit-btn" onclick="openSetlistMenuMain()">続けてメニューを開く</button>
-        <button class="edit-btn" onclick="closeModal()">閉じる</button>
-      </div>
-    `;
-    openModal();
-    return; // 診断表示後は一旦停止
-    // 【診断用ここまで】
-  }
-
-  // 【診断用】診断表示後に実際のメニューを開く
-  function openSetlistMenuMain() {
-    closeModal();
-    setTimeout(() => _openSetlistMenuImpl(), 100);
-  }
-
-  function _openSetlistMenuImpl() {
-    const c = state.filteredConcerts[state.currentIdx];
-    if (!c) return;
     const setlistData   = state.setlistCache[c.id];
     const setlists      = setlistData ? (setlistData.setlists || []) : [];
     const activeSetlist = _getActiveSetlist(c.id, setlists);
