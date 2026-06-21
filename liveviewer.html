@@ -131,15 +131,8 @@
       position: relative;
       cursor: pointer;
       background: var(--bg-card);
-      /* iOSのSafariが画像長押し時にコンテキストメニューを出すのを防ぐ */
-      -webkit-touch-callout: none;
-      user-select: none;
     }
-    .poster-area img {
-      width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%;
-      /* 画像そのものへの長押しコンテキストメニューも防ぐ */
-      pointer-events: none;
-    }
+    .poster-area img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; }
     .poster-placeholder {
       width: 100%; height: 100%;
       display: flex; flex-direction: column;
@@ -213,58 +206,6 @@
       text-align: center;
       color: var(--text-dim);
       font-size: 14px;
-    }
-
-    /* ============ Ver1.5 新規スタイル ============ */
-    /* ⚠️マーク */
-    .unconfirmed-mark {
-      font-size: 14px; cursor: pointer; margin-right: 4px;
-      flex-shrink: 0;
-    }
-    .setlist-track { display: flex; align-items: center; }
-
-    /* 全件確認済みボタン */
-    .approve-all-btn-area {
-      padding: 12px 16px 4px;
-      text-align: center;
-    }
-    .approve-all-btn {
-      background: var(--accent); color: #fff;
-      border: none; border-radius: 8px;
-      padding: 10px 20px; font-size: 14px; font-weight: 700;
-      cursor: pointer; width: 100%;
-    }
-
-    /* 写真プレビュー */
-    .preview-grid {
-      display: flex; flex-wrap: wrap; gap: 8px;
-      padding: 8px 0; max-height: 200px; overflow-y: auto;
-    }
-    .preview-item { position: relative; }
-    .preview-img  {
-      width: 80px; height: 80px; object-fit: cover;
-      border-radius: 6px; border: 1px solid var(--border);
-    }
-    .preview-count {
-      text-align: center; color: var(--text-sub);
-      font-size: 13px; padding: 4px 0 8px;
-    }
-
-    /* 補足入力テキストエリア */
-    .edit-textarea {
-      width: 100%; box-sizing: border-box;
-      background: var(--bg-card); color: var(--text);
-      border: 1px solid var(--border); border-radius: 8px;
-      padding: 10px 12px; font-size: 14px;
-      resize: vertical; line-height: 1.6;
-    }
-
-    /* 原文表示ボックス */
-    .original-text-box {
-      background: var(--bg); border: 1px solid var(--border);
-      border-radius: 6px; padding: 8px 12px;
-      font-size: 13px; color: var(--text-sub);
-      word-break: break-all; margin-top: 4px;
     }
 
     /* ============ 演者一覧 ============ */
@@ -542,6 +483,58 @@
       font-size: 12px; text-align: center; padding: 5px;
     }
     .offline-bar.show { display: block; }
+
+    /* ============ Ver1.5 新規スタイル ============ */
+    /* ポスター写真エリア：長押し誤動作防止 */
+    .poster-area {
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+    .poster-area img { pointer-events: none; }
+
+    /* メニューボタン群 */
+    .edit-btn-group { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+    .edit-btn {
+      width: 100%; padding: 14px;
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
+      color: var(--text); font-size: 16px; text-align: left;
+      cursor: pointer;
+    }
+    .edit-btn-primary { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+    .edit-btn-danger  { border-color: #e57373; color: #e57373; }
+    .modal-section-title { font-size: 17px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
+
+    /* 写真プレビュー */
+    .preview-grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px 0; max-height: 200px; overflow-y: auto; }
+    .preview-img  { width: 80px; height: 80px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
+    .preview-count { text-align: center; color: var(--text-sub); font-size: 13px; padding: 4px 0 8px; }
+
+    /* 補足テキストエリア */
+    .edit-textarea {
+      width: 100%; box-sizing: border-box;
+      background: var(--bg-card); color: var(--text);
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 10px 12px; font-size: 14px; resize: vertical; line-height: 1.6;
+    }
+
+    /* 原文表示 */
+    .original-text-box {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 6px; padding: 8px 12px;
+      font-size: 13px; color: var(--text-sub); word-break: break-all; margin-top: 4px;
+    }
+
+    /* ⚠️マーク */
+    .unconfirmed-mark { font-size: 14px; cursor: pointer; margin-right: 4px; flex-shrink: 0; }
+
+    /* 全件確認済みボタン */
+    .approve-all-btn-area { padding: 12px 16px 4px; text-align: center; }
+    .approve-all-btn {
+      background: var(--accent); color: #fff;
+      border: none; border-radius: 8px;
+      padding: 10px 20px; font-size: 14px; font-weight: 700;
+      cursor: pointer; width: 100%;
+    }
   </style>
 </head>
 <body>
@@ -748,13 +741,12 @@
 
     try {
       // 【Ver1.5】localStorageにデータが残っていれば即時表示（起動高速化）
+      const thisYear   = String(new Date().getFullYear());
       const lsYears    = localStorage.getItem('lv_years');
       const lsArtists  = localStorage.getItem('lv_artists');
-      const thisYear   = String(new Date().getFullYear());
       const lsConcerts = localStorage.getItem('lv_concerts_' + thisYear);
 
       if (lsYears && lsArtists && lsConcerts) {
-        // localStorageから即時表示
         state.years                    = JSON.parse(lsYears);
         state.currentFilterYear        = thisYear;
         state.artists                  = JSON.parse(lsArtists);
@@ -770,13 +762,11 @@
         goTo(_findNearestIdx(state.filteredConcerts, today));
 
         document.getElementById('loading').classList.add('hidden');
-
-        // sync-barには「キャッシュ表示中」と表示（更新ボタンで最新化を促す）
         document.getElementById('sync-time').textContent = 'キャッシュ表示中（🔄で更新）';
         return;
       }
 
-      // localStorageが空の場合（初回起動・メモリクリア後）は従来通りAPIから取得
+      // localStorageが空の場合は従来通りAPIから取得
       document.getElementById('loading-msg').textContent = '年一覧取得中...';
       const years = await apiGet('years');
       state.years      = years;
@@ -829,66 +819,12 @@
       slide.className = 'swiper-slide';
       slide.innerHTML = buildConcertCard(c, i);
       track.appendChild(slide);
-
-      // 【Ver1.5】各エリアに直接長押しイベントを設定（document委譲より確実）
-      const card       = slide.querySelector('.concert-card');
-      const posterArea = slide.querySelector('.poster-area');
-      const infoArea   = slide.querySelector('.concert-info');
-      const setlistArea = slide.querySelector('.setlist-area');
-
-      if (posterArea) _attachLongPress(posterArea, () => openPosterMenu(), () => openLightbox(i));
-      if (infoArea)   _attachLongPress(infoArea,   () => openEditConcert(), null);
-      if (setlistArea) _attachLongPress(setlistArea, () => openSetlistMenu(), null);
     });
 
     document.getElementById('counter').textContent =
       state.filteredConcerts.length > 0
         ? `${state.currentIdx + 1} / ${state.filteredConcerts.length}`
         : '0 / 0';
-  }
-
-  // 長押し検知を要素に直接設定するユーティリティ
-  // onLongPress: 長押し時のコールバック
-  // onTap: タップ時のコールバック（nullの場合はタップ動作なし）
-  function _attachLongPress(el, onLongPress, onTap) {
-    let timer   = null;
-    let fired   = false;
-    let moved   = false;
-
-    el.addEventListener('touchstart', e => {
-      // タブ（.artist-tab）のタップはpreventDefaultせずonclick/タブ切り替えを優先
-      if (e.target.closest('.artist-tab')) return;
-      e.preventDefault(); // コンテキストメニュー・選択ハイライトを抑制
-      fired = false;
-      moved = false;
-      timer = setTimeout(() => {
-        fired = true;
-        onLongPress();
-      }, 500);
-    }, { passive: false });
-
-    el.addEventListener('touchmove', () => {
-      moved = true;
-      clearTimeout(timer);
-    }, { passive: true });
-
-    el.addEventListener('touchend', e => {
-      clearTimeout(timer);
-      if (fired) {
-        // 長押し発火後のtouchend → iOSが300ms後に生成するclickイベントを抑制
-        e.preventDefault();
-      } else if (!moved && onTap) {
-        onTap();
-      }
-      fired = false;
-      moved = false;
-    }, { passive: false });
-
-    el.addEventListener('touchcancel', () => {
-      clearTimeout(timer);
-      fired = false;
-      moved = false;
-    });
   }
 
   function buildConcertCard(c, idx) {
@@ -912,7 +848,7 @@
 
     return `
       <div class="concert-card" style="${c.is_future ? 'background:var(--bg-future)' : ''}">
-        <div class="poster-area">
+        <div class="poster-area" onclick="openLightbox(${idx})">
           ${posterHtml}
           ${futureBadge}
         </div>
@@ -991,21 +927,16 @@
     const el = document.getElementById('setlist-' + idx);
     if (!el) return;
 
-    const c         = state.filteredConcerts[idx];
-    const { setlists } = data;
+    const c        = state.filteredConcerts[idx];
+    const setlists = data ? (data.setlists || []) : [];
+    const artists  = c ? (c.artists || []) : [];
 
-    // 【Ver1.5】セトリ未入力でも公演DBのアーティスト情報からタブを生成
-    // 複数アーティストの場合はタブを表示（セトリ未登録でもアーティスト選択できるように）
-    const hasSetlist = setlists && setlists.length > 0;
-    const artists    = c ? (c.artists || []) : [];
-
-    if (!hasSetlist) {
+    // 【Ver1.5】セトリ未入力でも複数アーティストの場合はタブを表示
+    if (!setlists || setlists.length === 0) {
       if (artists.length > 1) {
-        // 対バン公演でセトリ未登録 → アーティストタブのみ表示
         const tabs = artists.map((a, i) =>
           `<div class="artist-tab ${i === 0 ? 'active' : ''}"
-                data-artist-id="${a.id}"
-                onclick="switchArtistTab(${idx}, ${i}, this)">${esc(a.name)}</div>`
+                onclick="switchArtistTab(this)">${esc(a.name)}</div>`
         ).join('');
         el.innerHTML = `
           <div class="artist-tabs">${tabs}</div>
@@ -1022,7 +953,6 @@
       const tabs = setlists.map((sl, i) =>
         `<div class="artist-tab ${i === 0 ? 'active' : ''}"
               data-setlist-id="${sl.id}"
-              data-artist-id="${sl.artist_id}"
               onclick="switchSetlistTab(${idx}, ${i}, this)">${esc(sl.artist_name)}</div>`
       ).join('');
 
@@ -1041,6 +971,13 @@
     }
   }
 
+  // 【Ver1.5】セトリ未入力時のアーティストタブ切り替え（セトリなし表示のまま）
+  function switchArtistTab(el) {
+    const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+  }
+
   function buildSongList(songs, setlistId, liveId) {
     if (!songs || songs.length === 0) {
       return '<div class="no-setlist">曲目なし</div>';
@@ -1055,17 +992,18 @@
       const numLabel   = s.track !== null ? s.track : (s.is_encore ? '—' : trackCounter);
       const encoreHtml = s.is_encore ? `<span class="encore-prefix">EN.</span>` : '';
       const cls        = s.is_encore ? 'track-name encore' : 'track-name';
+
       // 【Ver1.5】未確認フラグONの曲に⚠️マークを表示
       if (s.unconfirmed) hasUnconfirmed = true;
       const warningHtml = s.unconfirmed
-        ? `<span class="unconfirmed-mark" onclick="openApproveSongModal('${s.id}','${esc(s.song_name)}','${esc(s.rank || '')}','${esc(s.original_text || '')}',event)">⚠️</span>`
+        ? `<span class="unconfirmed-mark" onclick="openApproveSongModal('${s.id}','${esc(s.song_name)}','${esc(s.rank||'')}','${esc(s.original_text||'')}',event)">⚠️</span>`
         : '';
 
       html += `
         <div class="setlist-track">
           <span class="track-num">${numLabel}</span>
           ${warningHtml}
-          <span class="${cls}" onclick="openSongEditModal('${s.id}','${esc(s.song_name)}',${s.encore_count || 0})">${encoreHtml}${esc(s.song_name)}</span>
+          <span class="${cls}" onclick="openSongEditModal('${s.id}','${esc(s.song_name)}',${s.encore_count||0})">${encoreHtml}${esc(s.song_name)}</span>
         </div>
       `;
     });
@@ -1074,7 +1012,7 @@
     if (hasUnconfirmed && setlistId) {
       html += `
         <div class="approve-all-btn-area">
-          <button class="approve-all-btn" onclick="approveAll('${setlistId}','${liveId || ''}')">
+          <button class="approve-all-btn" onclick="approveAll('${setlistId}','${liveId||''}')">
             ✅ 全て確認済みにする
           </button>
         </div>
@@ -1084,14 +1022,6 @@
     return html;
   }
 
-  // 【Ver1.5】アーティストタブ切り替え（セトリ未登録時）
-  function switchArtistTab(cardIdx, tabIdx, el) {
-    const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
-    tabs.forEach(t => t.classList.remove('active'));
-    el.classList.add('active');
-  }
-
-  // セトリ登録済みの対バン公演タブ切り替え
   function switchSetlistTab(cardIdx, tabIdx, el) {
     const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
     tabs.forEach(t => t.classList.remove('active'));
@@ -1258,53 +1188,71 @@
   }
 
   // ============================================================
-  // 【Ver1.5】ポスター写真メニュー
+  // 修正モーダル（長押し検知）【Ver1.5更新】
   // ============================================================
+  let longPressTimer = null;
 
+  document.addEventListener('touchstart', e => {
+    if (e.target.closest('.poster-area')) {
+      // ポスター写真エリア長押し → ポスター写真メニュー【Ver1.5新規】
+      longPressTimer = setTimeout(() => openPosterMenu(), 600);
+    } else if (e.target.closest('.concert-info')) {
+      // 公演情報エリア長押し → 公演情報フォーム（Ver1.4より継続）
+      longPressTimer = setTimeout(() => openEditConcert(), 600);
+    } else if (e.target.closest('.setlist-area')) {
+      // セトリエリア長押し → セトリメニュー【Ver1.5変更：直接編集モードからメニュー方式に変更】
+      longPressTimer = setTimeout(() => openSetlistMenu(), 600);
+    }
+  }, { passive: true });
+
+  // 指が離れたらタイマーキャンセル
+  document.addEventListener('touchend', () => {
+    clearTimeout(longPressTimer);
+  });
+
+  // 指が動いたらタイマーキャンセル（スクロール中の誤発火防止）
+  document.addEventListener('touchmove', () => {
+    clearTimeout(longPressTimer);
+  }, { passive: true });
+
+  // ============================================================
+  // 【Ver1.5新規】ポスター写真メニュー
+  // ============================================================
   function openPosterMenu() {
     alert('openPosterMenu called'); // 【診断用・確認後削除】
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
 
-    const html = `
+    document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">ポスター写真</div>
       <div class="edit-btn-group">
         <button class="edit-btn" onclick="triggerPosterUpload()">➕ ポスター写真を追加</button>
-        <button class="edit-btn edit-btn-danger" onclick="closePosterMenu()">戻る</button>
+        <button class="edit-btn" onclick="closeModal()">戻る</button>
       </div>
     `;
-    document.getElementById('modal-body').innerHTML = html;
-    document.getElementById('modal-overlay').classList.add('active');
+    openModal();
   }
-
-  function closePosterMenu() { closeModal(); }
 
   function triggerPosterUpload() {
     closeModal();
-    const input = document.createElement('input');
+    const input    = document.createElement('input');
     input.type     = 'file';
     input.accept   = 'image/*';
     input.multiple = true;
-    input.onchange = async (e) => {
+    input.onchange = e => {
       const files = Array.from(e.target.files);
       if (!files.length) return;
-
-      // プレビュー表示
       showPosterPreview(files);
     };
     input.click();
   }
 
   function showPosterPreview(files) {
-    const previews = files.map((f, i) =>
-      `<div class="preview-item">
-         <img src="${URL.createObjectURL(f)}" alt="プレビュー${i+1}" class="preview-img">
-         <div class="preview-name">${esc(f.name)}</div>
-       </div>`
+    const previews = files.map(f =>
+      `<img src="${URL.createObjectURL(f)}" class="preview-img" alt="プレビュー">`
     ).join('');
-
-    const html = `
+    document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">ポスター写真を追加</div>
       <div class="preview-grid">${previews}</div>
       <div class="preview-count">${files.length}枚選択中</div>
@@ -1313,10 +1261,7 @@
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-body').innerHTML = html;
-    document.getElementById('modal-overlay').classList.add('active');
-
-    // filesをstateに保持
+    openModal();
     state._pendingPosterFiles = files;
   }
 
@@ -1324,67 +1269,53 @@
     const c     = state.filteredConcerts[state.currentIdx];
     const files = state._pendingPosterFiles || [];
     if (!files.length || !c) return;
-
     closeModal();
-    showToast('📤 アップロード中...');
-
     let successCount = 0;
     for (let i = 0; i < files.length; i++) {
       try {
         showToast(`📤 送信中 ${i+1}/${files.length}...`);
         const b64 = await fileToBase64(files[i]);
         await apiPost('lv_upload_poster', {
-          liveId:      c.id,
-          imageBase64: b64,
-          fileName:    files[i].name,
-          mimeType:    files[i].type || 'image/jpeg',
-          year:        c.year || String(new Date().getFullYear()),
+          liveId: c.id, imageBase64: b64,
+          fileName: files[i].name, mimeType: files[i].type || 'image/jpeg',
+          year: c.date ? c.date.slice(0,4) : String(new Date().getFullYear()),
         });
         successCount++;
-        await new Promise(r => setTimeout(r, 500)); // 連続送信の間隔
-      } catch(e) {
-        showToast('❌ 送信失敗: ' + e.message);
-      }
+        await new Promise(r => setTimeout(r, 500));
+      } catch(e) { showToast('❌ 送信失敗: ' + e.message); }
     }
-
     if (successCount > 0) {
       showToast(`✅ ${successCount}枚のポスター写真を追加しました`);
-      // キャッシュクリアして再読み込み
-      if (state.concertsByYear) {
-        const year = c.year || String(new Date().getFullYear());
-        delete state.concertsByYear[year];
-        localStorage.removeItem('lv_concerts_' + year);
-      }
+      const year = c.date ? c.date.slice(0,4) : String(new Date().getFullYear());
+      delete state.concertsByYear[year];
+      localStorage.removeItem('lv_concerts_' + year);
     }
     state._pendingPosterFiles = null;
   }
 
   // ============================================================
-  // 【Ver1.5】セトリメニュー
+  // 【Ver1.5新規】セトリメニュー
   // ============================================================
-
   function openSetlistMenu() {
     alert('openSetlistMenu called'); // 【診断用・確認後削除】
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
 
-    // 現在のセトリ情報を取得（has_note・has_photoの判定に使う）
-    // キャッシュがない場合はサーバー側でチェックするため解析ボタンは有効のまま表示
     const setlistData   = state.setlistCache[c.id];
     const setlists      = setlistData ? (setlistData.setlists || []) : [];
-    const activeSetlist = _getActiveSetlist(c, setlists);
+    const activeSetlist = _getActiveSetlist(c.id, setlists);
+    const setlistId     = activeSetlist ? activeSetlist.id : null;
     const hasNote       = activeSetlist ? activeSetlist.has_note  : false;
     const hasPhoto      = activeSetlist ? activeSetlist.has_photo : false;
     const hasInput      = hasNote || hasPhoto || !setlistData;
-    const setlistId     = activeSetlist ? activeSetlist.id : null;
     const hasSongs      = activeSetlist ? (activeSetlist.songs && activeSetlist.songs.length > 0) : false;
 
     const analyzeBtn = hasInput
       ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId || ''}')">🔍 ③ セトリ解析</button>`
-      : `<button class="edit-btn" style="opacity:0.5" title="写真または補足を先に登録してください">🔍 ③ セトリ解析（写真/補足が必要）</button>`;
+      : `<button class="edit-btn" style="opacity:0.5">🔍 ③ セトリ解析（写真/補足が必要）</button>`;
 
-    const html = `
+    document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">セトリメニュー</div>
       <div class="edit-btn-group">
         <button class="edit-btn" onclick="triggerSetlistImageUpload('${setlistId || ''}')">📸 ① セトリ写真アップ</button>
@@ -1395,32 +1326,31 @@
         <button class="edit-btn" onclick="closeModal()">⑥ 戻る</button>
       </div>
     `;
-    document.getElementById('modal-body').innerHTML = html;
-    document.getElementById('modal-overlay').classList.add('active');
+    openModal();
   }
 
   // 現在アクティブなタブのセットリストを返す
-  function _getActiveSetlist(c, setlists) {
+  function _getActiveSetlist(liveId, setlists) {
     if (!setlists || setlists.length === 0) return null;
     if (setlists.length === 1) return setlists[0];
-
-    // アクティブタブのsetlist-idを探す
-    const card      = document.getElementById('setlist-' + state.currentIdx);
+    const idx       = state.currentIdx;
+    const card      = document.getElementById('setlist-' + idx);
     const activeTab = card ? card.querySelector('.artist-tab.active') : null;
-    const activeId  = activeTab ? activeTab.dataset.setlistId : null;
-    if (activeId) return setlists.find(sl => sl.id === activeId) || setlists[0];
+    if (activeTab && activeTab.dataset.setlistId) {
+      return setlists.find(sl => sl.id === activeTab.dataset.setlistId) || setlists[0];
+    }
     return setlists[0];
   }
 
   // セトリ写真アップロード
   function triggerSetlistImageUpload(setlistId) {
-    if (!setlistId) { showToast('セトリDBが未登録です。先に公演情報を確認してください。'); return; }
+    if (!setlistId) { showToast('セトリDBが未登録です'); return; }
     closeModal();
-    const input   = document.createElement('input');
-    input.type    = 'file';
-    input.accept  = 'image/*';
+    const input    = document.createElement('input');
+    input.type     = 'file';
+    input.accept   = 'image/*';
     input.multiple = true;
-    input.onchange = (e) => {
+    input.onchange = e => {
       const files = Array.from(e.target.files);
       if (!files.length) return;
       showSetlistImagePreview(files, setlistId);
@@ -1429,13 +1359,10 @@
   }
 
   function showSetlistImagePreview(files, setlistId) {
-    const previews = files.map((f, i) =>
-      `<div class="preview-item">
-         <img src="${URL.createObjectURL(f)}" alt="プレビュー${i+1}" class="preview-img">
-       </div>`
+    const previews = files.map(f =>
+      `<img src="${URL.createObjectURL(f)}" class="preview-img" alt="プレビュー">`
     ).join('');
-
-    const html = `
+    document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">📸 セトリ写真アップ</div>
       <div class="preview-grid">${previews}</div>
       <div class="preview-count">${files.length}枚選択中</div>
@@ -1444,9 +1371,8 @@
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-body').innerHTML = html;
-    document.getElementById('modal-overlay').classList.add('active');
-    state._pendingSetlistImageFiles   = files;
+    openModal();
+    state._pendingSetlistImageFiles    = files;
     state._pendingSetlistImageSetlistId = setlistId;
   }
 
@@ -1455,7 +1381,6 @@
     const files     = state._pendingSetlistImageFiles || [];
     const setlistId = state._pendingSetlistImageSetlistId;
     if (!files.length || !setlistId) return;
-
     closeModal();
     let successCount = 0;
     for (let i = 0; i < files.length; i++) {
@@ -1463,47 +1388,36 @@
         showToast(`📤 送信中 ${i+1}/${files.length}...`);
         const b64 = await fileToBase64(files[i]);
         await apiPost('lv_upload_setlist_image', {
-          liveId:      c ? c.id : null,
-          setlistId:   setlistId,
-          imageBase64: b64,
-          fileName:    files[i].name,
-          mimeType:    files[i].type || 'image/jpeg',
+          liveId: c ? c.id : null, setlistId,
+          imageBase64: b64, fileName: files[i].name, mimeType: files[i].type || 'image/jpeg',
         });
         successCount++;
         await new Promise(r => setTimeout(r, 500));
-      } catch(e) {
-        showToast('❌ 送信失敗: ' + e.message);
-      }
+      } catch(e) { showToast('❌ 送信失敗: ' + e.message); }
     }
-
     if (successCount > 0) {
       showToast(`✅ ${successCount}枚のセトリ写真をアップしました`);
-      // セットリストキャッシュをクリア（has_photoが更新されるため）
-      if (c) {
-        delete state.setlistCache[c.id];
-        localStorage.removeItem('lv_setlist_' + c.id);
-      }
+      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); }
     }
     state._pendingSetlistImageFiles    = null;
     state._pendingSetlistImageSetlistId = null;
   }
 
-  // セトリ補足入力モーダル
+  // セトリ補足入力
   function openSetlistNoteInput(setlistId) {
     closeModal();
-    const html = `
+    document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">✍️ セトリ補足入力</div>
-      <div class="modal-row">
+      <div class="modal-item">
         <textarea id="note-input" class="edit-textarea" rows="6"
-          placeholder="補足テキストを入力してください&#10;例：アンコール これでいいのだ&#10;    3曲目 最高新記憶に変更"></textarea>
+          placeholder="補足テキストを入力してください"></textarea>
       </div>
       <div class="edit-btn-group">
         <button class="edit-btn edit-btn-primary" onclick="saveSetlistNote('${setlistId}')">💾 保存する</button>
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-body').innerHTML = html;
-    document.getElementById('modal-overlay').classList.add('active');
+    openModal();
     setTimeout(() => document.getElementById('note-input')?.focus(), 100);
   }
 
@@ -1512,69 +1426,43 @@
     const text = document.getElementById('note-input')?.value?.trim() || '';
     if (!text) { showToast('テキストを入力してください'); return; }
     if (!setlistId) { showToast('setlistIdが取得できません'); return; }
-
     try {
       closeModal();
       showToast('💾 保存中...');
-      await apiPost('lv_upload_setlist_note', {
-        liveId:    c ? c.id : null,
-        setlistId: setlistId,
-        text:      text,
-      });
+      await apiPost('lv_upload_setlist_note', { liveId: c ? c.id : null, setlistId, text });
       showToast('✅ セトリ補足を保存しました');
-      // キャッシュクリア
-      if (c) {
-        delete state.setlistCache[c.id];
-        localStorage.removeItem('lv_setlist_' + c.id);
-      }
-    } catch(e) {
-      showToast('❌ 保存失敗: ' + e.message);
-    }
+      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); }
+    } catch(e) { showToast('❌ 保存失敗: ' + e.message); }
   }
 
   // セトリ解析実行
   async function startSetlistAnalysis(setlistId) {
     if (!setlistId) { showToast('setlistIdが取得できません'); return; }
     closeModal();
-
     try {
       showToast('🔍 解析を開始します...');
-      await apiPost('lv_analyze', {
-        setlistId: setlistId,
-        userId:    null,
-      });
+      await apiPost('lv_analyze', { setlistId, userId: null });
       showToast('✅ 解析を開始しました。完了後に自動更新します。');
-
-      // ポーリング開始（完了を検知して自動更新）
       _startAnalysisPolling(setlistId);
-    } catch(e) {
-      showToast('❌ ' + e.message);
-    }
+    } catch(e) { showToast('❌ ' + e.message); }
   }
 
-  // 解析完了ポーリング
+  // 解析完了ポーリング（5秒間隔・最大60回＝5分でタイムアウト）
   let _pollingTimer = null;
   function _startAnalysisPolling(setlistId) {
     if (_pollingTimer) clearInterval(_pollingTimer);
     let attempts = 0;
-    const maxAttempts = 60; // 最大5分（5秒×60回）
-
     _pollingTimer = setInterval(async () => {
       attempts++;
-      if (attempts > maxAttempts) {
-        clearInterval(_pollingTimer);
-        _pollingTimer = null;
-        showToast('⚠️ 解析完了を確認できませんでした。手動で更新してください。');
+      if (attempts > 60) {
+        clearInterval(_pollingTimer); _pollingTimer = null;
+        showToast('⚠️ 解析に時間がかかっています。後ほど更新ボタンで確認してください。');
         return;
       }
-
       try {
-        const result = await apiGet('lv_analysis_status', { setlistId: setlistId });
+        const result = await apiGet('lv_analysis_status', { setlistId });
         if (result && result.is_complete) {
-          clearInterval(_pollingTimer);
-          _pollingTimer = null;
-
-          // セットリストキャッシュをクリアして再読み込み
+          clearInterval(_pollingTimer); _pollingTimer = null;
           const c = state.filteredConcerts[state.currentIdx];
           if (c) {
             delete state.setlistCache[c.id];
@@ -1583,18 +1471,15 @@
           }
           showToast('✅ 解析完了！セトリを確認してください。');
         }
-      } catch(e) {
-        // ポーリング中のエラーは無視して継続
-      }
-    }, 5000); // 5秒ごとに確認
+      } catch(e) {}
+    }, 5000);
   }
 
   // セトリ全件削除確認
   function confirmDeleteSetlist(setlistId) {
-    if (!setlistId) return;
-    const html = `
+    document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">🗑️ 登録セトリ削除</div>
-      <div class="modal-row" style="text-align:center;color:var(--text-sub);padding:16px 0;">
+      <div class="modal-item" style="text-align:center;color:var(--text-sub);padding:16px 0;">
         このセトリの曲目を全て削除します。<br>この操作は元に戻せません。
       </div>
       <div class="edit-btn-group">
@@ -1602,7 +1487,6 @@
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-body').innerHTML = html;
   }
 
   async function deleteSetlistSongs(setlistId) {
@@ -1610,100 +1494,61 @@
     try {
       closeModal();
       showToast('🗑️ 削除中...');
-      await apiPost('lv_delete_setlist', {
-        liveId:    c ? c.id : null,
-        setlistId: setlistId,
-      });
+      await apiPost('lv_delete_setlist', { liveId: c ? c.id : null, setlistId });
       showToast('✅ セトリを削除しました');
       if (c) {
         delete state.setlistCache[c.id];
         localStorage.removeItem('lv_setlist_' + c.id);
         await loadSetlist(state.currentIdx);
       }
-    } catch(e) {
-      showToast('❌ 削除失敗: ' + e.message);
-    }
+    } catch(e) { showToast('❌ 削除失敗: ' + e.message); }
   }
 
-  // ============================================================
-  // 【Ver1.5】⚠️マークタップ → 確認済みモーダル
-  // ============================================================
-
+  // ⚠️マークタップ → 確認済みモーダル
   function openApproveSongModal(songId, songName, rank, originalText, event) {
-    event.stopPropagation(); // 曲名クリックイベントと干渉しないよう伝播を止める
+    event.stopPropagation();
     const c = state.filteredConcerts[state.currentIdx];
-
-    const html = `
+    const activeSetlist = _getActiveSetlist(c ? c.id : null, state.setlistCache[c?.id]?.setlists || []);
+    document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">⚠️ 確認が必要な曲</div>
-      <div class="modal-row">
+      <div class="modal-item">
         <div class="modal-label">曲名（修正可能）</div>
-        <input type="text" id="approve-song-name" class="edit-input" value="${esc(songName)}">
+        <input type="text" id="approve-song-name" class="modal-input" value="${esc(songName)}">
       </div>
-      ${rank ? `<div class="modal-row"><span class="modal-label">自信度</span> <span style="color:var(--text-sub)">${esc(rank)}</span></div>` : ''}
-      ${originalText ? `<div class="modal-row"><div class="modal-label">原文</div><div class="original-text-box">${esc(originalText)}</div></div>` : ''}
+      ${rank ? `<div class="modal-item"><span class="modal-label">自信度</span> <span style="color:var(--text-sub)">${esc(rank)}</span></div>` : ''}
+      ${originalText ? `<div class="modal-item"><div class="modal-label">原文</div><div class="original-text-box">${esc(originalText)}</div></div>` : ''}
       <div class="edit-btn-group">
-        <button class="edit-btn edit-btn-primary" onclick="approveSong('${songId}', true, '${esc(c ? c.id : '')}')">💾 修正して確認済みにする</button>
-        <button class="edit-btn" onclick="approveSong('${songId}', false, '${esc(c ? c.id : '')}')">✅ このままで確認済みにする</button>
+        <button class="edit-btn edit-btn-primary" onclick="approveSong('${songId}', true, '${esc(c ? c.id : '')}', '${activeSetlist ? activeSetlist.id : ''}')">💾 修正して確認済みにする</button>
+        <button class="edit-btn" onclick="approveSong('${songId}', false, '${esc(c ? c.id : '')}', '${activeSetlist ? activeSetlist.id : ''}')">✅ このままで確認済みにする</button>
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-body').innerHTML = html;
-    document.getElementById('modal-overlay').classList.add('active');
+    openModal();
   }
 
-  async function approveSong(songId, withName, liveId) {
-    const newName = withName
-      ? (document.getElementById('approve-song-name')?.value?.trim() || null)
-      : null;
-
-    const c = state.filteredConcerts[state.currentIdx];
-    const activeSetlist = _getActiveSetlist(c, state.setlistCache[c?.id]?.setlists || []);
-
+  async function approveSong(songId, withName, liveId, setlistId) {
+    const newName = withName ? (document.getElementById('approve-song-name')?.value?.trim() || null) : null;
     try {
       closeModal();
       showToast('✅ 確認済みにしています...');
-      await apiPost('lv_approve_song', {
-        liveId:     liveId,
-        setlistId:  activeSetlist ? activeSetlist.id : null,
-        songId:     songId,
-        songName:   newName,
-      });
+      await apiPost('lv_approve_song', { liveId, setlistId, songId, songName: newName });
       showToast('✅ 確認済みにしました');
-
-      // セットリストキャッシュをクリアして再読み込み
-      if (c) {
-        delete state.setlistCache[c.id];
-        localStorage.removeItem('lv_setlist_' + c.id);
-        await loadSetlist(state.currentIdx);
-      }
-    } catch(e) {
-      showToast('❌ 失敗: ' + e.message);
-    }
+      const c = state.filteredConcerts[state.currentIdx];
+      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
+    } catch(e) { showToast('❌ 失敗: ' + e.message); }
   }
 
-  // 全件確認済みボタン（セトリ末尾に表示）
   async function approveAll(setlistId, liveId) {
     const c = state.filteredConcerts[state.currentIdx];
     try {
       showToast('✅ 全件確認済みにしています...');
-      await apiPost('lv_approve_all', {
-        liveId:    liveId || (c ? c.id : null),
-        setlistId: setlistId,
-      });
+      await apiPost('lv_approve_all', { liveId: liveId || (c ? c.id : null), setlistId });
       showToast('✅ 全件確認済みにしました');
-      if (c) {
-        delete state.setlistCache[c.id];
-        localStorage.removeItem('lv_setlist_' + c.id);
-        await loadSetlist(state.currentIdx);
-      }
-    } catch(e) {
-      showToast('❌ 失敗: ' + e.message);
-    }
+      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
+    } catch(e) { showToast('❌ 失敗: ' + e.message); }
   }
 
-  // ============================================================
-  // 【Ver1.5】ファイルをbase64に変換するユーティリティ
-  // ============================================================
+  // ファイルをbase64に変換
   function fileToBase64(file) {
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -1713,7 +1558,62 @@
     });
   }
 
-  // 【Ver1.5】公演情報フォーム（表示確認＋形式・メモのみ修正可能）
+  // ============================================================
+  // 【Ver1.5新規】通常表示時の曲名タップ → 1曲編集モーダル
+  // （編集モード内のopenSongEditとは別・セトリキャッシュをクリアして再描画）
+  // ============================================================
+  function openSongEditModal(songId, songName, encoreCount) {
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-title">✏️ 曲を編集</div>
+      <div class="modal-item">
+        <div class="modal-label">曲名</div>
+        <input class="modal-input" type="text" id="song-modal-name" value="${esc(songName)}">
+      </div>
+      <div class="modal-item">
+        <div class="modal-label">アンコール区分</div>
+        <select class="modal-select" id="song-modal-encore">
+          <option value="0" ${encoreCount === 0 ? 'selected' : ''}>本編</option>
+          <option value="1" ${encoreCount === 1 ? 'selected' : ''}>アンコール 1</option>
+          <option value="2" ${encoreCount === 2 ? 'selected' : ''}>アンコール 2</option>
+        </select>
+      </div>
+      <button class="modal-save-btn" onclick="saveSongEditModal('${songId}')">保存する</button>
+      <button class="edit-delete-song-btn" onclick="deleteSongModal('${songId}')">この曲を削除</button>
+      <button class="modal-cancel-btn" onclick="closeModal()">キャンセル</button>
+    `;
+    openModal();
+  }
+
+  async function saveSongEditModal(songId) {
+    const c        = state.filteredConcerts[state.currentIdx];
+    const songName = document.getElementById('song-modal-name')?.value?.trim();
+    const encore   = parseInt(document.getElementById('song-modal-encore')?.value || '0', 10);
+    if (!songName) { showToast('曲名を入力してください'); return; }
+    try {
+      await apiPost('edit_setlist', {
+        edit_type: 'edit_song', liveId: c ? c.id : null,
+        setlistId: null, song_id: songId, song_name: songName, encore_count: encore,
+      });
+      closeModal();
+      showToast('✅ 保存しました');
+      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
+    } catch(e) { showToast('❌ 保存失敗: ' + e.message); }
+  }
+
+  async function deleteSongModal(songId) {
+    const c = state.filteredConcerts[state.currentIdx];
+    try {
+      await apiPost('edit_setlist', {
+        edit_type: 'delete_song', liveId: c ? c.id : null, setlistId: null, song_id: songId,
+      });
+      closeModal();
+      showToast('🗑️ 削除しました');
+      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
+    } catch(e) { showToast('❌ 削除失敗: ' + e.message); }
+  }
+
+  // ============================================================
+  // 【Ver1.4】公演情報フォーム（表示確認＋形式・メモのみ修正可能）
   function openEditConcert() {
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
