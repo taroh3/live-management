@@ -903,8 +903,8 @@
       renderSetlist(idx, data);
 
     } catch(e) {
-      const el = document.getElementById('setlist-' + idx);
-      if (el) el.innerHTML = '<div class="no-setlist">セットリストなし</div>';
+      // エラー時もrenderSetlistを呼んでアーティストタブを表示
+      renderSetlist(idx, { setlists: [] });
     } finally {
       loadingSetlists.delete(c.id);
     }
@@ -931,8 +931,8 @@
     const setlists = data ? (data.setlists || []) : [];
     const artists  = c ? (c.artists || []) : [];
 
-    // 【Ver1.5】セトリ未入力でも複数アーティストの場合はタブを表示
-    if (!setlists || setlists.length === 0) {
+    // セトリ未入力（setlists=0件）かつ複数アーティスト → タブのみ表示
+    if (setlists.length === 0) {
       if (artists.length > 1) {
         const tabs = artists.map((a, i) =>
           `<div class="artist-tab ${i === 0 ? 'active' : ''}"
@@ -948,34 +948,51 @@
       return;
     }
 
-    // 対バン（複数セットリスト）の場合はタブ
-    if (setlists.length > 1) {
-      const tabs = setlists.map((sl, i) =>
-        `<div class="artist-tab ${i === 0 ? 'active' : ''}"
-              data-setlist-id="${sl.id}"
-              onclick="switchSetlistTab(${idx}, ${i}, this)">${esc(sl.artist_name)}</div>`
-      ).join('');
+    // 複数アーティストの場合（setlists件数に関わらずartistsが複数ならタブを表示）
+    if (artists.length > 1) {
+      const tabs = artists.map((a, i) => {
+        const sl = setlists.find(s => s.artist_id === a.id);
+        return `<div class="artist-tab ${i === 0 ? 'active' : ''}"
+              data-artist-idx="${i}"
+              data-setlist-id="${sl ? sl.id : ''}"
+              onclick="switchArtistTabPane(${idx}, ${i}, this)">${esc(a.name)}</div>`;
+      }).join('');
 
-      const panes = setlists.map((sl, i) =>
-        `<div class="setlist-pane" id="pane-${idx}-${i}" style="${i > 0 ? 'display:none' : ''}">
-           ${buildSongList(sl.songs, sl.id, c ? c.id : '')}
-         </div>`
-      ).join('');
+      // アーティストIDでsetlistを引き当てる
+      const panes = artists.map((a, i) => {
+        const sl = setlists.find(s => s.artist_id === a.id);
+        const content = sl
+          ? buildSongList(sl.songs, sl.id, c ? c.id : '')
+          : '<div class="no-setlist">セットリストなし</div>';
+        return `<div class="setlist-pane" id="pane-${idx}-${i}" style="${i > 0 ? 'display:none' : ''}">${content}</div>`;
+      }).join('');
 
       el.innerHTML = `
         <div class="artist-tabs">${tabs}</div>
         ${panes}
       `;
-    } else {
-      el.innerHTML = buildSongList(setlists[0].songs, setlists[0].id, c ? c.id : '');
+      return;
     }
+
+    // 1アーティストの場合
+    el.innerHTML = buildSongList(setlists[0].songs, setlists[0].id, c ? c.id : '');
   }
 
-  // 【Ver1.5】セトリ未入力時のアーティストタブ切り替え（セトリなし表示のまま）
+  // セトリ未入力時のアーティストタブ切り替え（「セットリストなし」表示のまま）
   function switchArtistTab(el) {
     const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
     tabs.forEach(t => t.classList.remove('active'));
     el.classList.add('active');
+  }
+
+  // 複数アーティストでセトリが一部入力の場合のタブ切り替え
+  function switchArtistTabPane(cardIdx, tabIdx, el) {
+    const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+
+    const panes = document.querySelectorAll(`[id^="pane-${cardIdx}-"]`);
+    panes.forEach((p, i) => p.style.display = i === tabIdx ? 'block' : 'none');
   }
 
   function buildSongList(songs, setlistId, liveId) {
@@ -1193,6 +1210,9 @@
   let longPressTimer = null;
 
   document.addEventListener('touchstart', e => {
+    // タブタップ時は長押し検知しない（タブのonclickを優先）
+    if (e.target.closest('.artist-tab')) return;
+
     if (e.target.closest('.poster-area')) {
       longPressTimer = setTimeout(() => {
         _modalJustOpened = true;
