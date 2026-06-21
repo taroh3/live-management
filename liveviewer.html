@@ -1194,14 +1194,23 @@
 
   document.addEventListener('touchstart', e => {
     if (e.target.closest('.poster-area')) {
-      // ポスター写真エリア長押し → ポスター写真メニュー【Ver1.5新規】
-      longPressTimer = setTimeout(() => openPosterMenu(), 600);
+      longPressTimer = setTimeout(() => {
+        _modalJustOpened = true;
+        setTimeout(() => { _modalJustOpened = false; }, 600);
+        openPosterMenu();
+      }, 600);
     } else if (e.target.closest('.concert-info')) {
-      // 公演情報エリア長押し → 公演情報フォーム（Ver1.4より継続）
-      longPressTimer = setTimeout(() => openEditConcert(), 600);
+      longPressTimer = setTimeout(() => {
+        _modalJustOpened = true;
+        setTimeout(() => { _modalJustOpened = false; }, 600);
+        openEditConcert();
+      }, 600);
     } else if (e.target.closest('.setlist-area')) {
-      // セトリエリア長押し → セトリメニュー【Ver1.5変更：直接編集モードからメニュー方式に変更】
-      longPressTimer = setTimeout(() => openSetlistMenu(), 600);
+      longPressTimer = setTimeout(() => {
+        _modalJustOpened = true;
+        setTimeout(() => { _modalJustOpened = false; }, 600);
+        openSetlistMenu();
+      }, 600);
     }
   }, { passive: true });
 
@@ -2038,7 +2047,11 @@
     document.getElementById('modal-overlay').classList.add('active');
   }
 
+  // 【Ver1.5】長押し後のclickイベントによる即時クローズを防ぐフラグ
+  let _modalJustOpened = false;
+
   function closeModal(e) {
+    if (_modalJustOpened) return; // 長押し直後のclickは無視
     if (e && e.target !== document.getElementById('modal-overlay')) return;
     document.getElementById('modal-overlay').classList.remove('active');
   }
