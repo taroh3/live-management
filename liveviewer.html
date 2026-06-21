@@ -870,14 +870,17 @@
       clearTimeout(timer);
     }, { passive: true });
 
-    el.addEventListener('touchend', () => {
+    el.addEventListener('touchend', e => {
       clearTimeout(timer);
-      if (!fired && !moved && onTap) {
+      if (fired) {
+        // 長押し発火後のtouchend → iOSが300ms後に生成するclickイベントを抑制
+        e.preventDefault();
+      } else if (!moved && onTap) {
         onTap();
       }
       fired = false;
       moved = false;
-    });
+    }, { passive: false });
 
     el.addEventListener('touchcancel', () => {
       clearTimeout(timer);
@@ -1086,6 +1089,16 @@
     el.classList.add('active');
   }
 
+  // セトリ登録済みの対バン公演タブ切り替え
+  function switchSetlistTab(cardIdx, tabIdx, el) {
+    const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+
+    const panes = document.querySelectorAll(`[id^="pane-${cardIdx}-"]`);
+    panes.forEach((p, i) => p.style.display = i === tabIdx ? 'block' : 'none');
+  }
+
   // ============================================================
   // iOSスワイプ戻る/進むジェスチャーを無効化
   // ============================================================
@@ -1247,6 +1260,7 @@
   // ============================================================
 
   function openPosterMenu() {
+    alert('openPosterMenu called'); // 【診断用・確認後削除】
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
@@ -1348,6 +1362,7 @@
   // ============================================================
 
   function openSetlistMenu() {
+    alert('openSetlistMenu called'); // 【診断用・確認後削除】
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
