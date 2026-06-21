@@ -856,6 +856,8 @@
     let moved   = false;
 
     el.addEventListener('touchstart', e => {
+      // タブ（.artist-tab）のタップはpreventDefaultせずonclick/タブ切り替えを優先
+      if (e.target.closest('.artist-tab')) return;
       e.preventDefault(); // コンテキストメニュー・選択ハイライトを抑制
       fired = false;
       moved = false;
@@ -1272,7 +1274,7 @@
         <button class="edit-btn edit-btn-danger" onclick="closePosterMenu()">戻る</button>
       </div>
     `;
-    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-body').innerHTML = html;
     document.getElementById('modal-overlay').classList.add('active');
   }
 
@@ -1311,7 +1313,7 @@
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-body').innerHTML = html;
     document.getElementById('modal-overlay').classList.add('active');
 
     // filesをstateに保持
@@ -1393,7 +1395,7 @@
         <button class="edit-btn" onclick="closeModal()">⑥ 戻る</button>
       </div>
     `;
-    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-body').innerHTML = html;
     document.getElementById('modal-overlay').classList.add('active');
   }
 
@@ -1442,7 +1444,7 @@
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-body').innerHTML = html;
     document.getElementById('modal-overlay').classList.add('active');
     state._pendingSetlistImageFiles   = files;
     state._pendingSetlistImageSetlistId = setlistId;
@@ -1500,7 +1502,7 @@
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-body').innerHTML = html;
     document.getElementById('modal-overlay').classList.add('active');
     setTimeout(() => document.getElementById('note-input')?.focus(), 100);
   }
@@ -1600,7 +1602,7 @@
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-body').innerHTML = html;
   }
 
   async function deleteSetlistSongs(setlistId) {
@@ -1645,7 +1647,7 @@
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
-    document.getElementById('modal-content').innerHTML = html;
+    document.getElementById('modal-body').innerHTML = html;
     document.getElementById('modal-overlay').classList.add('active');
   }
 
