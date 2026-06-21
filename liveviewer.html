@@ -1250,7 +1250,6 @@
   // 【Ver1.5新規】ポスター写真メニュー
   // ============================================================
   function openPosterMenu() {
-    alert('openPosterMenu called'); // 【診断用・確認後削除】
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
@@ -1328,7 +1327,6 @@
   // 【Ver1.5新規】セトリメニュー
   // ============================================================
   function openSetlistMenu() {
-    alert('openSetlistMenu called'); // 【診断用・確認後削除】
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
@@ -1336,29 +1334,26 @@
     const setlistData   = state.setlistCache[c.id];
     const setlists      = setlistData ? (setlistData.setlists || []) : [];
     const activeSetlist = _getActiveSetlist(c.id, setlists);
-    const setlistId     = activeSetlist ? activeSetlist.id   : null;
+    const setlistId     = activeSetlist ? activeSetlist.id       : null;
     const artistId      = activeSetlist ? activeSetlist.artistId : null;
-    const hasNote       = activeSetlist ? activeSetlist.has_note  : false;
-    const hasPhoto      = activeSetlist ? activeSetlist.has_photo : false;
-    const hasInput      = setlistId ? (hasNote || hasPhoto) : false;
     const hasSongs      = activeSetlist ? (activeSetlist.songs && activeSetlist.songs.length > 0) : false;
 
-    // セトリ未登録でもartistIdがあれば①②は有効（GAS側で新規作成）
-    const canUpload = artistId !== null;
+    // セトリ未登録でもartistIdがあれば①②③は有効（GAS側でNotionを検索・新規作成）
+    const canOperate = artistId !== null;
 
-    const analyzeBtn = (setlistId && hasInput)
-      ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId}')">🔍 ③ セトリ解析</button>`
-      : setlistId
-        ? `<button class="edit-btn" style="opacity:0.5">🔍 ③ セトリ解析（写真/補足が必要）</button>`
-        : `<button class="edit-btn" style="opacity:0.5">🔍 ③ セトリ解析（先に写真/補足を登録）</button>`;
+    // ③解析ボタン：GAS側でsetlistIdを検索するためartistIdがあれば常に有効
+    // setlistIdとartistIdの両方をGASに渡す（LINEメニューと同じ設計）
+    const analyzeBtn = canOperate
+      ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId || ''}','${artistId || ''}','${c.id}')">🔍 ③ セトリ解析</button>`
+      : `<button class="edit-btn" style="opacity:0.5">🔍 ③ セトリ解析</button>`;
 
     document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">セトリメニュー</div>
       <div class="edit-btn-group">
-        ${canUpload
+        ${canOperate
           ? `<button class="edit-btn" onclick="triggerSetlistImageUpload('${setlistId || ''}','${artistId || ''}')">📸 ① セトリ写真アップ</button>`
           : `<button class="edit-btn" style="opacity:0.5">📸 ① セトリ写真アップ</button>`}
-        ${canUpload
+        ${canOperate
           ? `<button class="edit-btn" onclick="openSetlistNoteInput('${setlistId || ''}','${artistId || ''}')">✍️ ② セトリ補足入力</button>`
           : `<button class="edit-btn" style="opacity:0.5">✍️ ② セトリ補足入力</button>`}
         ${analyzeBtn}
@@ -1497,20 +1492,24 @@
   }
 
   // セトリ解析実行
-  async function startSetlistAnalysis(setlistId) {
-    if (!setlistId) { showToast('setlistIdが取得できません'); return; }
+  async function startSetlistAnalysis(setlistId, artistId, liveId) {
     closeModal();
     try {
       showToast('🔍 解析を開始します...');
-      await apiPost('lv_analyze', { setlistId, userId: null });
+      await apiPost('lv_analyze', {
+        setlistId: setlistId || null,
+        artistId:  artistId  || null,
+        liveId:    liveId    || null,
+        userId:    null,
+      });
       showToast('✅ 解析を開始しました。完了後に自動更新します。');
-      _startAnalysisPolling(setlistId);
+      _startAnalysisPolling(setlistId, liveId, artistId);
     } catch(e) { showToast('❌ ' + e.message); }
   }
 
   // 解析完了ポーリング（5秒間隔・最大60回＝5分でタイムアウト）
   let _pollingTimer = null;
-  function _startAnalysisPolling(setlistId) {
+  function _startAnalysisPolling(setlistId, liveId, artistId) {
     if (_pollingTimer) clearInterval(_pollingTimer);
     let attempts = 0;
     _pollingTimer = setInterval(async () => {
@@ -1521,7 +1520,14 @@
         return;
       }
       try {
-        const result = await apiGet('lv_analysis_status', { setlistId });
+        // setlistIdがない場合はliveIdとartistIdから取得
+        let targetId = setlistId;
+        if (!targetId && liveId) {
+          const statusRes = await apiGet('lv_analysis_status', { liveId, artistId: artistId || '' });
+          if (statusRes && statusRes.setlistId) targetId = statusRes.setlistId;
+        }
+        if (!targetId) return;
+        const result = await apiGet('lv_analysis_status', { setlistId: targetId });
         if (result && result.is_complete) {
           clearInterval(_pollingTimer); _pollingTimer = null;
           const c = state.filteredConcerts[state.currentIdx];
