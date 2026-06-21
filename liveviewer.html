@@ -1331,6 +1331,43 @@
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
 
+    // 【診断用・確認後削除】DOMの状態をモーダルで表示
+    const diagIdx    = state.currentIdx;
+    const diagCard   = document.getElementById('setlist-' + diagIdx);
+    const diagTabs   = diagCard ? diagCard.querySelectorAll('.artist-tab') : [];
+    const diagActive = diagCard ? diagCard.querySelector('.artist-tab.active') : null;
+    let diagLines = [];
+    diagLines.push('タブ数=' + diagTabs.length);
+    diagLines.push('cache=' + (!!state.setlistCache[c.id]));
+    diagTabs.forEach((t, i) => {
+      diagLines.push('tab[' + i + ']:');
+      diagLines.push('  slId=' + (t.dataset.setlistId || '(空)').substring(0, 20));
+      diagLines.push('  artId=' + (t.dataset.artistId || '(空)').substring(0, 20));
+      diagLines.push('  active=' + t.classList.contains('active'));
+    });
+    diagLines.push('activeTab=' + (diagActive ? diagActive.textContent.trim() : 'なし'));
+    document.getElementById('modal-body').innerHTML = `
+      <div class="modal-section-title">【診断】セトリエリアDOM状態</div>
+      <pre style="font-size:11px;color:var(--text);white-space:pre-wrap;word-break:break-all">${diagLines.join('\n')}</pre>
+      <div class="edit-btn-group">
+        <button class="edit-btn" onclick="openSetlistMenuMain()">続けてメニューを開く</button>
+        <button class="edit-btn" onclick="closeModal()">閉じる</button>
+      </div>
+    `;
+    openModal();
+    return; // 診断表示後は一旦停止
+    // 【診断用ここまで】
+  }
+
+  // 【診断用】診断表示後に実際のメニューを開く
+  function openSetlistMenuMain() {
+    closeModal();
+    setTimeout(() => _openSetlistMenuImpl(), 100);
+  }
+
+  function _openSetlistMenuImpl() {
+    const c = state.filteredConcerts[state.currentIdx];
+    if (!c) return;
     const setlistData   = state.setlistCache[c.id];
     const setlists      = setlistData ? (setlistData.setlists || []) : [];
     const activeSetlist = _getActiveSetlist(c.id, setlists);
@@ -1520,14 +1557,20 @@
         return;
       }
       try {
-        // setlistIdがない場合はliveIdとartistIdから取得
-        let targetId = setlistId;
-        if (!targetId && liveId) {
-          const statusRes = await apiGet('lv_analysis_status', { liveId, artistId: artistId || '' });
-          if (statusRes && statusRes.setlistId) targetId = statusRes.setlistId;
-        }
-        if (!targetId) return;
-        const result = await apiGet('lv_analysis_status', { setlistId: targetId });
+        // キャッシュを使わず直接fetchでステータスを取得
+        const url = new URL(GAS_URL);
+        url.searchParams.set('action', 'lv_analysis_status');
+        if (setlistId) url.searchParams.set('setlistId', setlistId);
+        if (liveId)    url.searchParams.set('liveId',    liveId);
+        if (artistId)  url.searchParams.set('artistId',  artistId);
+        const res    = await fetch(url.toString());
+        const json   = await res.json();
+        if (!json.success) return;
+        const result = json.data;
+
+        // setlistIdが不明だった場合はここで取得
+        if (!setlistId && result.setlistId) setlistId = result.setlistId;
+
         if (result && result.is_complete) {
           clearInterval(_pollingTimer); _pollingTimer = null;
           const c = state.filteredConcerts[state.currentIdx];
