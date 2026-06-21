@@ -936,6 +936,8 @@
       if (artists.length > 1) {
         const tabs = artists.map((a, i) =>
           `<div class="artist-tab ${i === 0 ? 'active' : ''}"
+                data-artist-id="${a.id}"
+                data-setlist-id=""
                 onclick="switchArtistTab(this)">${esc(a.name)}</div>`
         ).join('');
         el.innerHTML = `
@@ -953,7 +955,7 @@
       const tabs = artists.map((a, i) => {
         const sl = setlists.find(s => s.artist_id === a.id);
         return `<div class="artist-tab ${i === 0 ? 'active' : ''}"
-              data-artist-idx="${i}"
+              data-artist-id="${a.id}"
               data-setlist-id="${sl ? sl.id : ''}"
               onclick="switchArtistTabPane(${idx}, ${i}, this)">${esc(a.name)}</div>`;
       }).join('');
@@ -1334,21 +1336,31 @@
     const setlistData   = state.setlistCache[c.id];
     const setlists      = setlistData ? (setlistData.setlists || []) : [];
     const activeSetlist = _getActiveSetlist(c.id, setlists);
-    const setlistId     = activeSetlist ? activeSetlist.id : null;
+    const setlistId     = activeSetlist ? activeSetlist.id   : null;
+    const artistId      = activeSetlist ? activeSetlist.artistId : null;
     const hasNote       = activeSetlist ? activeSetlist.has_note  : false;
     const hasPhoto      = activeSetlist ? activeSetlist.has_photo : false;
-    const hasInput      = hasNote || hasPhoto || !setlistData;
+    const hasInput      = setlistId ? (hasNote || hasPhoto) : false;
     const hasSongs      = activeSetlist ? (activeSetlist.songs && activeSetlist.songs.length > 0) : false;
 
-    const analyzeBtn = hasInput
-      ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId || ''}')">🔍 ③ セトリ解析</button>`
-      : `<button class="edit-btn" style="opacity:0.5">🔍 ③ セトリ解析（写真/補足が必要）</button>`;
+    // セトリ未登録でもartistIdがあれば①②は有効（GAS側で新規作成）
+    const canUpload = artistId !== null;
+
+    const analyzeBtn = (setlistId && hasInput)
+      ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId}')">🔍 ③ セトリ解析</button>`
+      : setlistId
+        ? `<button class="edit-btn" style="opacity:0.5">🔍 ③ セトリ解析（写真/補足が必要）</button>`
+        : `<button class="edit-btn" style="opacity:0.5">🔍 ③ セトリ解析（先に写真/補足を登録）</button>`;
 
     document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">セトリメニュー</div>
       <div class="edit-btn-group">
-        <button class="edit-btn" onclick="triggerSetlistImageUpload('${setlistId || ''}')">📸 ① セトリ写真アップ</button>
-        <button class="edit-btn" onclick="openSetlistNoteInput('${setlistId || ''}')">✍️ ② セトリ補足入力</button>
+        ${canUpload
+          ? `<button class="edit-btn" onclick="triggerSetlistImageUpload('${setlistId || ''}','${artistId || ''}')">📸 ① セトリ写真アップ</button>`
+          : `<button class="edit-btn" style="opacity:0.5">📸 ① セトリ写真アップ</button>`}
+        ${canUpload
+          ? `<button class="edit-btn" onclick="openSetlistNoteInput('${setlistId || ''}','${artistId || ''}')">✍️ ② セトリ補足入力</button>`
+          : `<button class="edit-btn" style="opacity:0.5">✍️ ② セトリ補足入力</button>`}
         ${analyzeBtn}
         <button class="edit-btn" onclick="closeModal();openEditSetlist()">✏️ ④ セトリ修正</button>
         ${hasSongs ? `<button class="edit-btn edit-btn-danger" onclick="confirmDeleteSetlist('${setlistId}')">🗑️ ⑤ 登録セトリ削除</button>` : ''}
@@ -1360,20 +1372,32 @@
 
   // 現在アクティブなタブのセットリストを返す
   function _getActiveSetlist(liveId, setlists) {
-    if (!setlists || setlists.length === 0) return null;
-    if (setlists.length === 1) return setlists[0];
     const idx       = state.currentIdx;
     const card      = document.getElementById('setlist-' + idx);
     const activeTab = card ? card.querySelector('.artist-tab.active') : null;
-    if (activeTab && activeTab.dataset.setlistId) {
-      return setlists.find(sl => sl.id === activeTab.dataset.setlistId) || setlists[0];
+
+    if (activeTab) {
+      const setlistId = activeTab.dataset.setlistId || null;
+      const artistId  = activeTab.dataset.artistId  || null;
+      if (!setlistId) {
+        // セトリ未登録だがartistIdは返す
+        return { id: null, artistId };
+      }
+      const found = setlists ? setlists.find(sl => sl.id === setlistId) : null;
+      return found
+        ? { ...found, artistId: found.artist_id || artistId }
+        : { id: setlistId, artistId };
     }
-    return setlists[0];
+
+    // タブなし（1アーティスト）
+    if (setlists && setlists.length === 1) {
+      return { ...setlists[0], artistId: setlists[0].artist_id || null };
+    }
+    return { id: null, artistId: null };
   }
 
   // セトリ写真アップロード
-  function triggerSetlistImageUpload(setlistId) {
-    if (!setlistId) { showToast('セトリDBが未登録です'); return; }
+  function triggerSetlistImageUpload(setlistId, artistId) {
     closeModal();
     const input    = document.createElement('input');
     input.type     = 'file';
@@ -1382,12 +1406,12 @@
     input.onchange = e => {
       const files = Array.from(e.target.files);
       if (!files.length) return;
-      showSetlistImagePreview(files, setlistId);
+      showSetlistImagePreview(files, setlistId, artistId);
     };
     input.click();
   }
 
-  function showSetlistImagePreview(files, setlistId) {
+  function showSetlistImagePreview(files, setlistId, artistId) {
     const previews = files.map(f =>
       `<img src="${URL.createObjectURL(f)}" class="preview-img" alt="プレビュー">`
     ).join('');
@@ -1401,15 +1425,17 @@
       </div>
     `;
     openModal();
-    state._pendingSetlistImageFiles    = files;
+    state._pendingSetlistImageFiles     = files;
     state._pendingSetlistImageSetlistId = setlistId;
+    state._pendingSetlistImageArtistId  = artistId;
   }
 
   async function uploadSetlistImageFiles() {
     const c         = state.filteredConcerts[state.currentIdx];
     const files     = state._pendingSetlistImageFiles || [];
     const setlistId = state._pendingSetlistImageSetlistId;
-    if (!files.length || !setlistId) return;
+    const artistId  = state._pendingSetlistImageArtistId;
+    if (!files.length) return;
     closeModal();
     let successCount = 0;
     for (let i = 0; i < files.length; i++) {
@@ -1417,7 +1443,8 @@
         showToast(`📤 送信中 ${i+1}/${files.length}...`);
         const b64 = await fileToBase64(files[i]);
         await apiPost('lv_upload_setlist_image', {
-          liveId: c ? c.id : null, setlistId,
+          liveId: c ? c.id : null, setlistId: setlistId || null,
+          artistId: artistId || null,
           imageBase64: b64, fileName: files[i].name, mimeType: files[i].type || 'image/jpeg',
         });
         successCount++;
@@ -1428,12 +1455,13 @@
       showToast(`✅ ${successCount}枚のセトリ写真をアップしました`);
       if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); }
     }
-    state._pendingSetlistImageFiles    = null;
+    state._pendingSetlistImageFiles     = null;
     state._pendingSetlistImageSetlistId = null;
+    state._pendingSetlistImageArtistId  = null;
   }
 
   // セトリ補足入力
-  function openSetlistNoteInput(setlistId) {
+  function openSetlistNoteInput(setlistId, artistId) {
     closeModal();
     document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">✍️ セトリ補足入力</div>
@@ -1442,7 +1470,7 @@
           placeholder="補足テキストを入力してください"></textarea>
       </div>
       <div class="edit-btn-group">
-        <button class="edit-btn edit-btn-primary" onclick="saveSetlistNote('${setlistId}')">💾 保存する</button>
+        <button class="edit-btn edit-btn-primary" onclick="saveSetlistNote('${setlistId || ''}','${artistId || ''}')">💾 保存する</button>
         <button class="edit-btn" onclick="closeModal()">キャンセル</button>
       </div>
     `;
@@ -1450,15 +1478,19 @@
     setTimeout(() => document.getElementById('note-input')?.focus(), 100);
   }
 
-  async function saveSetlistNote(setlistId) {
+  async function saveSetlistNote(setlistId, artistId) {
     const c    = state.filteredConcerts[state.currentIdx];
     const text = document.getElementById('note-input')?.value?.trim() || '';
     if (!text) { showToast('テキストを入力してください'); return; }
-    if (!setlistId) { showToast('setlistIdが取得できません'); return; }
     try {
       closeModal();
       showToast('💾 保存中...');
-      await apiPost('lv_upload_setlist_note', { liveId: c ? c.id : null, setlistId, text });
+      await apiPost('lv_upload_setlist_note', {
+        liveId:    c ? c.id : null,
+        setlistId: setlistId || null,
+        artistId:  artistId  || null,
+        text,
+      });
       showToast('✅ セトリ補足を保存しました');
       if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); }
     } catch(e) { showToast('❌ 保存失敗: ' + e.message); }
