@@ -1638,41 +1638,32 @@
     if (!c || c.id !== liveId) return;
 
     try {
-      // UI フィードバック
-      showToast('🔄 セトリを更新中...');
+      // 【修正】persistent=true で「更新中...」を表示し続ける
+      showToast('🔄 セトリを更新中...', true);
 
-      // 【Step 1】メモリキャッシュをクリア
       delete state.setlistCache[liveId];
-
-      // 【Step 2】localStorage キャッシュをクリア
       localStorage.removeItem('lv_setlist_' + liveId);
 
-      // 【Step 3】GAS API から新規取得
       const data = await fetch(GAS_URL + '?action=setlist&liveId=' + encodeURIComponent(liveId))
         .then(r => r.json())
         .then(r => { if (!r.success) throw new Error(r.error); return r.data; });
 
-      // 【Step 4】キャッシュに保存
       state.setlistCache[liveId] = data;
       try {
         localStorage.setItem('lv_setlist_' + liveId, JSON.stringify(data));
       } catch(e) {
-        // localStorage 容量不足時は無視
         console.log('localStorage 容量不足: セトリキャッシュを保存できません');
       }
 
-      // 【Step 5】統計キャッシュをクリア（セトリが更新されたため）
       state.statsData = null;
 
-      // 【Step 6】UI 更新
-      loadSetlist(state.currentIdx);
+      // 【修正】renderSetlist() を直接呼び出す
+      renderSetlist(state.currentIdx, data);
       closeModal();
 
-      // 【Step 7】完了表示
       showToast('✅ セトリを更新しました');
 
     } catch(e) {
-      // エラー処理：Notion API 429 エラーを特別対応
       if (e.message && e.message.includes('429')) {
         showToast('⏳ API制限中です。しばらく待ってから再度お試しください');
       } else {
@@ -2466,11 +2457,15 @@
     showToast(state.filteredConcerts[idx].date_label + ' にジャンプしました');
   }
 
-  function showToast(msg) {
+  function showToast(msg, persistent = false) {
     const t = document.getElementById('toast');
     t.textContent = msg;
     t.classList.add('show');
-    setTimeout(() => t.classList.remove('show'), 2500);
+    
+    // persistent=true の場合は自動消去しない
+    if (!persistent) {
+      setTimeout(() => t.classList.remove('show'), 2500);
+    }
   }
 
   // ============================================================
@@ -2483,6 +2478,20 @@
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;');
   }
+
+  // ============================================================
+  // 【Ver1.8新規】iOS 長押しメニュー対策
+  // ============================================================
+  document.addEventListener('contextmenu', (e) => {
+    // セトリエリア・公演情報・ポスター写真でのコンテキストメニューを無効化
+    if (e.target.closest('.setlist-area') || 
+        e.target.closest('.concert-info') ||
+        e.target.closest('.poster-area')) {
+      e.preventDefault();
+      return false;
+    }
+  });
+
 </script>
 </body>
 </html>
