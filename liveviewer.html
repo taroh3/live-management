@@ -1638,42 +1638,62 @@
     if (!c || c.id !== liveId) return;
 
     try {
-      // 【Ver1.8】persistent=true で「更新中...」を表示継続
+      // 【仕様書 9.5.2】persistent=true で「更新中...」を表示し続ける
       showToast('🔄 セトリを更新中...', true);
 
-      // キャッシュをクリア
+      // 【仕様書 9.5.1】3つのキャッシュをクリア
       delete state.setlistCache[liveId];
       localStorage.removeItem('lv_setlist_' + liveId);
       state.statsData = null;
 
-      // GAS APIから再取得
-      const data = await fetch(GAS_URL + '?action=setlist&liveId=' + encodeURIComponent(liveId))
-        .then(r => r.json())
-        .then(r => { if (!r.success) throw new Error(r.error); return r.data; });
+      // 【仕様書 9.5.2】GAS API から再取得
+      const response = await fetch(GAS_URL + '?action=setlist&liveId=' + encodeURIComponent(liveId), {
+        method: 'GET',
+        timeout: 30000  // タイムアウト: 30秒
+      });
 
-      // メモリキャッシュに保存
+      if (!response.ok) {
+        if (response.status === 429) {
+          throw new Error('429');
+        }
+        throw new Error('HTTP ' + response.status);
+      }
+
+      const json = await response.json();
+      if (!json.success) throw new Error(json.error || 'APIエラー');
+
+      const data = json.data;
+
+      // 【仕様書 9.5.2】メモリキャッシュと localStorage に保存
       state.setlistCache[liveId] = data;
-
-      // localStorageに保存（容量不足時は無視）
       try {
         localStorage.setItem('lv_setlist_' + liveId, JSON.stringify(data));
       } catch(e) {
         console.log('localStorage 容量不足: セトリキャッシュを保存できません');
       }
 
-      // 【Ver1.8】renderSetlist() を直接呼び出し（二重キャッシュを避ける）
+      // 【仕様書 9.5.2】UI 再描画
       renderSetlist(state.currentIdx, data);
       closeModal();
 
-      // 完了メッセージ（persistent=false で2.5秒後に消える）
+      // 【仕様書 9.3】完了メッセージを表示（2秒後に自動消去）
       showToast('✅ セトリを更新しました');
 
     } catch(e) {
-      if (e.message && e.message.includes('429')) {
-        showToast('⏳ API制限中です。しばらく待ってから再度お試しください');
+      // 【仕様書 9.6】エラーメッセージの正確な形式
+      let errorMsg = '❌ セトリ更新失敗: ';
+      
+      if (e.message === '429') {
+        errorMsg = '⏳ API制限中です。しばらく待ってから再度お試しください';
+      } else if (!navigator.onLine || e.message.includes('Network')) {
+        errorMsg += 'ネットワークエラー';
+      } else if (e.message.includes('timeout')) {
+        errorMsg += 'タイムアウト';
       } else {
-        showToast('❌ セトリ更新失敗: ' + e.message);
+        errorMsg += (e.message || '不明なエラー');
       }
+      
+      showToast(errorMsg);
     }
   }
 
