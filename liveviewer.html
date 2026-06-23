@@ -1638,29 +1638,34 @@
     if (!c || c.id !== liveId) return;
 
     try {
-      // 【修正】persistent=true で「更新中...」を表示し続ける
+      // 【Ver1.8】persistent=true で「更新中...」を表示継続
       showToast('🔄 セトリを更新中...', true);
 
+      // キャッシュをクリア
       delete state.setlistCache[liveId];
       localStorage.removeItem('lv_setlist_' + liveId);
+      state.statsData = null;
 
+      // GAS APIから再取得
       const data = await fetch(GAS_URL + '?action=setlist&liveId=' + encodeURIComponent(liveId))
         .then(r => r.json())
         .then(r => { if (!r.success) throw new Error(r.error); return r.data; });
 
+      // メモリキャッシュに保存
       state.setlistCache[liveId] = data;
+
+      // localStorageに保存（容量不足時は無視）
       try {
         localStorage.setItem('lv_setlist_' + liveId, JSON.stringify(data));
       } catch(e) {
         console.log('localStorage 容量不足: セトリキャッシュを保存できません');
       }
 
-      state.statsData = null;
-
-      // 【修正】renderSetlist() を直接呼び出す
+      // 【Ver1.8】renderSetlist() を直接呼び出し（二重キャッシュを避ける）
       renderSetlist(state.currentIdx, data);
       closeModal();
 
+      // 完了メッセージ（persistent=false で2.5秒後に消える）
       showToast('✅ セトリを更新しました');
 
     } catch(e) {
