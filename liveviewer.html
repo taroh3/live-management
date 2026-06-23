@@ -1341,25 +1341,34 @@
     // セトリ未登録でもartistIdがあれば①②③は有効（GAS側でNotionを検索・新規作成）
     const canOperate = artistId !== null;
 
+    // 【Ver1.8】修正モード中かどうかを判定
+    const isEditingSetlist = (editSetlistState && editSetlistState.active === true && editSetlistState.liveId === c.id);
+
     // ③解析ボタン：GAS側でsetlistIdを検索するためartistIdがあれば常に有効
     // setlistIdとartistIdの両方をGASに渡す（LINEメニューと同じ設計）
     const analyzeBtn = canOperate
-      ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId || ''}','${artistId || ''}','${c.id}')">🔍 ③ セトリ解析</button>`
-      : `<button class="edit-btn" style="opacity:0.5">🔍 ③ セトリ解析</button>`;
+      ? `<button class="edit-btn edit-btn-primary" onclick="startSetlistAnalysis('${setlistId || ''}','${artistId || ''}','${c.id}')">🔍 セトリ解析</button>`
+      : `<button class="edit-btn" style="opacity:0.5">🔍 セトリ解析</button>`;
+
+    // 【Ver1.8新規】④セトリ更新ボタン
+    const refreshBtn = isEditingSetlist
+      ? `<button class="edit-btn" style="opacity:0.5" disabled title="修正中は更新できません">🔄 セトリ更新</button>`
+      : `<button class="edit-btn edit-btn-primary" onclick="refreshSetlistData('${c.id}')">🔄 セトリ更新</button>`;
 
     document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">セトリメニュー</div>
       <div class="edit-btn-group">
         ${canOperate
-          ? `<button class="edit-btn" onclick="triggerSetlistImageUpload('${setlistId || ''}','${artistId || ''}')">📸 ① セトリ写真アップ</button>`
-          : `<button class="edit-btn" style="opacity:0.5">📸 ① セトリ写真アップ</button>`}
+          ? `<button class="edit-btn" onclick="triggerSetlistImageUpload('${setlistId || ''}','${artistId || ''}')">📸 セトリ写真アップ</button>`
+          : `<button class="edit-btn" style="opacity:0.5">📸 セトリ写真アップ</button>`}
         ${canOperate
-          ? `<button class="edit-btn" onclick="openSetlistNoteInput('${setlistId || ''}','${artistId || ''}')">✍️ ② セトリ補足入力</button>`
-          : `<button class="edit-btn" style="opacity:0.5">✍️ ② セトリ補足入力</button>`}
+          ? `<button class="edit-btn" onclick="openSetlistNoteInput('${setlistId || ''}','${artistId || ''}')">✍️ セトリ補足入力</button>`
+          : `<button class="edit-btn" style="opacity:0.5">✍️ セトリ補足入力</button>`}
         ${analyzeBtn}
-        <button class="edit-btn" onclick="closeModal();openEditSetlist()">✏️ ④ セトリ修正</button>
-        ${hasSongs ? `<button class="edit-btn edit-btn-danger" onclick="confirmDeleteSetlist('${setlistId}')">🗑️ ⑤ 登録セトリ削除</button>` : ''}
-        <button class="edit-btn" onclick="closeModal()">⑥ 戻る</button>
+        ${refreshBtn}
+        <button class="edit-btn" onclick="closeModal();openEditSetlist()">✏️ セトリ修正</button>
+        ${hasSongs ? `<button class="edit-btn edit-btn-danger" onclick="confirmDeleteSetlist('${setlistId}')">🗑️ 登録セトリ削除</button>` : ''}
+        <button class="edit-btn" onclick="closeModal()">戻る</button>
       </div>
     `;
     openModal();
@@ -1619,6 +1628,57 @@
       showToast('✅ 全件確認済みにしました');
       if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
     } catch(e) { showToast('❌ 失敗: ' + e.message); }
+  }
+
+  // ============================================================
+  // セトリ限定更新【Ver1.8新規】
+  // ============================================================
+  async function refreshSetlistData(liveId) {
+    const c = state.filteredConcerts[state.currentIdx];
+    if (!c || c.id !== liveId) return;
+
+    try {
+      // UI フィードバック
+      showToast('🔄 セトリを更新中...');
+
+      // 【Step 1】メモリキャッシュをクリア
+      delete state.setlistCache[liveId];
+
+      // 【Step 2】localStorage キャッシュをクリア
+      localStorage.removeItem('lv_setlist_' + liveId);
+
+      // 【Step 3】GAS API から新規取得
+      const data = await fetch(GAS_URL + '?action=setlist&liveId=' + encodeURIComponent(liveId))
+        .then(r => r.json())
+        .then(r => { if (!r.success) throw new Error(r.error); return r.data; });
+
+      // 【Step 4】キャッシュに保存
+      state.setlistCache[liveId] = data;
+      try {
+        localStorage.setItem('lv_setlist_' + liveId, JSON.stringify(data));
+      } catch(e) {
+        // localStorage 容量不足時は無視
+        console.log('localStorage 容量不足: セトリキャッシュを保存できません');
+      }
+
+      // 【Step 5】統計キャッシュをクリア（セトリが更新されたため）
+      state.statsData = null;
+
+      // 【Step 6】UI 更新
+      loadSetlist(state.currentIdx);
+      closeModal();
+
+      // 【Step 7】完了表示
+      showToast('✅ セトリを更新しました');
+
+    } catch(e) {
+      // エラー処理：Notion API 429 エラーを特別対応
+      if (e.message && e.message.includes('429')) {
+        showToast('⏳ API制限中です。しばらく待ってから再度お試しください');
+      } else {
+        showToast('❌ セトリ更新失敗: ' + e.message);
+      }
+    }
   }
 
   // ファイルをbase64に変換
