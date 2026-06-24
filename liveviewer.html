@@ -659,6 +659,7 @@
     currentIdx:         0,
     currentTab:         'concerts',
     currentYear:        new Date().getFullYear(),
+    selectedArtist:     null,  // 選択アーティスト（Ver2.1新規）
     statsData:          null,
     filters:            { artist: null, year: null, prefecture: null },
     isOffline:          false,
@@ -816,26 +817,18 @@
   // 公演一覧レンダリング
   // ============================================================
   function renderConcerts() {
-  let concerts = state.concertsByYear[state.currentYear] || [];
-  
-  // selectedArtist がある場合はフィルター
-  if (state.selectedArtist) {
-    concerts = concerts.filter(c => {
-      const artists = (c.artist || '').split(',').map(a => a.trim());
-      return artists.includes(state.selectedArtist.name);
-    });
-  }
-  
-  if (concerts.length === 0) {
-    renderEmptyConcerts();
-    return;
-  }
-  
-  _renderConcerts_old(concerts);
-}
-
-function _renderConcerts_old(concerts) {
     state.filteredConcerts = filterConcerts(state.concerts);
+    
+    // selectedArtist がある場合は該当アーティストのみにフィルター（Ver2.1新規）
+    if (state.selectedArtist) {
+      state.filteredConcerts = state.filteredConcerts.filter(c => {
+        const artistNames = Array.isArray(c.artist) 
+          ? c.artist.map(a => typeof a === 'string' ? a : a.name)
+          : (typeof c.artist === 'string' ? [c.artist] : c.artist.map(a => a.name));
+        return artistNames.includes(state.selectedArtist.name);
+      });
+    }
+    
     const track = document.getElementById('track');
     track.innerHTML = '';
 
@@ -2160,52 +2153,108 @@ function _renderConcerts_old(concerts) {
   // 演者一覧
   // ============================================================
   function renderArtists() {
-  const {sorted, allYears} = loadArtists();
-  const stats = sorted.reduce((acc, a) => {
-    acc.past += (a.past || 0);
-    acc.total += (a.total || 0);
-    return acc;
-  }, {past: 0, total: 0});
-  
-  // 年タブ生成
-  let tabsHtml = '<button class="filter-chip active" onclick="switchArtistYear('all')">すべて</button>';
-  allYears.forEach(year => {
-    tabsHtml += `<button class="filter-chip" onclick="switchArtistYear(${year})">${year}年</button>`;
-  });
-  
-  const artistsHtml = sorted.map(a => {
-    const past = a.past || 0;
-    const total = a.total || 0;
-    return `<div class="artist-item" onclick="selectArtistAndShowConcerts('${a.name}')">
-      <span class="artist-name">${a.name}</span>
-      <span class="artist-count">${past}/${total}本</span>
-    </div>`;
-  }).join('');
-  
-  const view = document.getElementById('artists-view');
-  view.innerHTML = `
-    <div class="artist-tabs">${tabsHtml}</div>
-    <div class="artist-stats">参戦本数: ${stats.past}/${stats.total}本</div>
-    <div class="artists-list">${artistsHtml}</div>
-  `;
-}
-
-function _renderArtists_old() {
+    // 年別アーティスト集計（Ver2.1新規）
+    const artistsByYear = {};
+    const allYears = new Set();
+    
+    Object.entries(state.concertsByYear).forEach(([year, concerts]) => {
+      if (!concerts) return;
+      concerts.forEach(c => {
+        if (!c.artist || c.status === 'キャンセル') return;
+        
+        const artists = Array.isArray(c.artist) ? c.artist : [c.artist];
+        artists.forEach(artist => {
+          const artistName = typeof artist === 'string' ? artist : artist.name;
+          if (!artistName) return;
+          
+          allYears.add(parseInt(year));
+          if (!artistsByYear[year]) artistsByYear[year] = {};
+          if (!artistsByYear[year][artistName]) {
+            artistsByYear[year][artistName] = { name: artistName, past: 0, total: 0 };
+          }
+          artistsByYear[year][artistName].total += 1;
+          if (new Date(c.date) < new Date()) {
+            artistsByYear[year][artistName].past += 1;
+          }
+        });
+      });
+    });
+    
+    // 「すべて」の場合
+    const allArtists = {};
+    Object.values(artistsByYear).forEach(yearArtists => {
+      Object.entries(yearArtists).forEach(([name, data]) => {
+        if (!allArtists[name]) allArtists[name] = { name, past: 0, total: 0 };
+        allArtists[name].past += data.past;
+        allArtists[name].total += data.total;
+      });
+    });
+    
+    // 現在の年で表示
+    const displayYear = state.currentFilterYear || 'all';
+    const artists = displayYear === 'all' 
+      ? Object.values(allArtists)
+      : Object.values(artistsByYear[displayYear] || {});
+    
+    // 参戦本数順にソート
+    artists.sort((a, b) => (b.total || 0) - (a.total || 0));
+    
+    // 統計情報の計算
+    const stats = artists.reduce((acc, a) => {
+      acc.past += a.past || 0;
+      acc.total += a.total || 0;
+      return acc;
+    }, { past: 0, total: 0 });
+    
+    // 年タブ生成
+    const sortedYears = Array.from(allYears).sort((a, b) => b - a);
+    const tabsHtml = `
+      <button class="filter-chip ${displayYear === 'all' ? 'active' : ''}" onclick="switchArtistYear('all')">すべて</button>
+      ${sortedYears.map(year => `
+        <button class="filter-chip ${displayYear === year ? 'active' : ''}" onclick="switchArtistYear(${year})">${year}年</button>
+      `).join('')}
+    `;
+    
+    // アーティスト一覧HTML
     const list = document.getElementById('artist-list');
-    list.innerHTML = state.artists.map(a => `
-      <div class="artist-item" onclick="goToArtist('${a.id}')">
-        <div class="artist-icon">
-          ${a.default_img_url
-            ? `<img src="${a.default_img_url}" alt="${esc(a.name)}">`
-            : '👤'}
-        </div>
+    const artistsHtml = artists.map(a => `
+      <div class="artist-item" onclick="selectArtistAndShowConcerts('${esc(a.name)}')">
+        <div class="artist-icon">👤</div>
         <div class="artist-info">
           <div class="artist-item-name">${esc(a.name)}</div>
-          <div class="artist-item-sub">${a.concert_count}本 / ${a.song_count}曲</div>
         </div>
-        <div class="artist-item-count">${a.concert_count}</div>
+        <div class="artist-item-count">${a.past}/${a.total}本</div>
       </div>
     `).join('');
+    
+    // 参戦本数統計表示（Ver2.1新規）
+    const statsHtml = `
+      <div class="artist-stats" style="padding: 12px 16px; border-bottom: 1px solid var(--border); font-size: 13px; color: var(--text-sub);">
+        参戦本数: <span style="font-size: 18px; font-weight: 700; color: var(--text);">${stats.past}/${stats.total}本</span>
+      </div>
+    `;
+    
+    list.innerHTML = `
+      <div class="artist-tabs" style="display: flex; gap: 8px; padding: 8px 16px; overflow-x: auto; scrollbar-width: none;">
+        ${tabsHtml}
+      </div>
+      ${statsHtml}
+      <div class="artists-list">
+        ${artistsHtml}
+      </div>
+    `;
+  }
+
+  function switchArtistYear(year) {
+    // 演者一覧の年タブ切り替え（Ver2.1新規）
+    state.currentFilterYear = year;
+    renderArtists();
+  }
+
+  function selectArtistAndShowConcerts(artistName) {
+    // アーティスト名クリック → 公演一覧に遷移（Ver2.1新規）
+    state.selectedArtist = { name: artistName };
+    switchTab('concerts');
   }
 
   function goToArtist(artistId) {
@@ -2334,13 +2383,6 @@ function _renderArtists_old() {
   // タブ切り替え
   // ============================================================
   async function switchTab(tab) {
-  if (tab === 'concerts') {
-    state.selectedArtist = null;
-  }
-  _switchTab_old(tab);
-}
-
-function _switchTab_old(tab) {
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
     document.getElementById('tab-' + tab).classList.add('active');
 
@@ -2352,6 +2394,12 @@ function _switchTab_old(tab) {
     // フィルターバー・カウンターの表示制御
     document.getElementById('filter-bar').style.display = tab === 'concerts' ? 'flex' : 'none';
     document.getElementById('counter').style.display    = tab === 'concerts' ? 'block' : 'none';
+
+    // 「公演一覧」タブをクリック時にselectedArtistをリセット（Ver2.1新規）
+    if (tab === 'concerts') {
+      state.selectedArtist = null;
+      renderConcerts();
+    }
 
     if (tab === 'stats' && !state.statsData) {
       await renderStats();
