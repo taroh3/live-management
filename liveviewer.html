@@ -816,6 +816,25 @@
   // 公演一覧レンダリング
   // ============================================================
   function renderConcerts() {
+  let concerts = state.concertsByYear[state.currentYear] || [];
+  
+  // selectedArtist がある場合はフィルター
+  if (state.selectedArtist) {
+    concerts = concerts.filter(c => {
+      const artists = (c.artist || '').split(',').map(a => a.trim());
+      return artists.includes(state.selectedArtist.name);
+    });
+  }
+  
+  if (concerts.length === 0) {
+    renderEmptyConcerts();
+    return;
+  }
+  
+  _renderConcerts_old(concerts);
+}
+
+function _renderConcerts_old(concerts) {
     state.filteredConcerts = filterConcerts(state.concerts);
     const track = document.getElementById('track');
     track.innerHTML = '';
@@ -2141,6 +2160,37 @@
   // 演者一覧
   // ============================================================
   function renderArtists() {
+  const {sorted, allYears} = loadArtists();
+  const stats = sorted.reduce((acc, a) => {
+    acc.past += (a.past || 0);
+    acc.total += (a.total || 0);
+    return acc;
+  }, {past: 0, total: 0});
+  
+  // 年タブ生成
+  let tabsHtml = '<button class="filter-chip active" onclick="switchArtistYear('all')">すべて</button>';
+  allYears.forEach(year => {
+    tabsHtml += `<button class="filter-chip" onclick="switchArtistYear(${year})">${year}年</button>`;
+  });
+  
+  const artistsHtml = sorted.map(a => {
+    const past = a.past || 0;
+    const total = a.total || 0;
+    return `<div class="artist-item" onclick="selectArtistAndShowConcerts('${a.name}')">
+      <span class="artist-name">${a.name}</span>
+      <span class="artist-count">${past}/${total}本</span>
+    </div>`;
+  }).join('');
+  
+  const view = document.getElementById('artists-view');
+  view.innerHTML = `
+    <div class="artist-tabs">${tabsHtml}</div>
+    <div class="artist-stats">参戦本数: ${stats.past}/${stats.total}本</div>
+    <div class="artists-list">${artistsHtml}</div>
+  `;
+}
+
+function _renderArtists_old() {
     const list = document.getElementById('artist-list');
     list.innerHTML = state.artists.map(a => `
       <div class="artist-item" onclick="goToArtist('${a.id}')">
@@ -2284,6 +2334,13 @@
   // タブ切り替え
   // ============================================================
   async function switchTab(tab) {
+  if (tab === 'concerts') {
+    state.selectedArtist = null;
+  }
+  _switchTab_old(tab);
+}
+
+function _switchTab_old(tab) {
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
     document.getElementById('tab-' + tab).classList.add('active');
 
