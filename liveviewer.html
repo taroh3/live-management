@@ -1364,7 +1364,10 @@
           ? `<button class="edit-btn" onclick="openSetlistNoteInput('${setlistId || ''}','${artistId || ''}')">✍️ ② セトリ補足入力</button>`
           : `<button class="edit-btn" style="opacity:0.5">✍️ ② セトリ補足入力</button>`}
         ${analyzeBtn}
-        <button class="edit-btn" onclick="refreshSetlistData('${c.id}')">🔄 ④ セトリ更新</button>
+        ${!editSetlistState.active
+          ? `<button class="edit-btn" onclick="refreshSetlistData('${c.id}')">🔄 ④ セトリ更新</button>`
+          : `<button class="edit-btn" style="opacity:0.4;pointer-events:none;cursor:not-allowed" title="修正完了後に使用可能です">🔄 ④ セトリ更新</button>`
+        }
         <button class="edit-btn" onclick="closeModal();openEditSetlist()">✏️ ⑤ セトリ修正</button>
         ${hasSongs ? `<button class="edit-btn edit-btn-danger" onclick="confirmDeleteSetlist('${setlistId}')">🗑️ ⑥ 登録セトリ削除</button>` : ''}
         <button class="edit-btn" onclick="closeModal()">⑦ 戻る</button>
@@ -2428,29 +2431,41 @@
   // ============================================================
   // セトリ限定更新（Ver1.8新規）
   // ============================================================
-  function refreshSetlistData(liveId) {
+  async function refreshSetlistData(liveId) {
     showToast('⏳ セトリを更新中...', { persistent: true });
     
-    callGasApi('liveviewer_api', {
-      action: 'setlist',
-      liveId: liveId
-    })
-      .then(data => {
-        // localStorage に全セトリを保存
-        localStorage.setItem(`lv_setlist_${liveId}`, JSON.stringify(data));
-        
-        // メモリキャッシュにも保存
-        state.setlistCache[liveId] = data;
-        
-        // 現在のセトリを再描画
-        renderSetlist(state.currentIdx, data);
-        
-        showToast('✅ セトリを更新しました');
-        closeModal();
-      })
-      .catch(e => {
+    try {
+      // ① GAS APIからセトリ再取得（apiGet を使用）
+      const data = await apiGet('setlist', { liveId });
+      
+      // ② localStorage に全セトリを保存（仕様書 9.5.1）
+      localStorage.setItem(`lv_setlist_${liveId}`, JSON.stringify(data));
+      
+      // ③ メモリキャッシュに保存（仕様書 9.5.1）
+      state.setlistCache[liveId] = data;
+      
+      // ④ セトリ統計キャッシュをクリア（仕様書 9.5.1）
+      state.statsData = null;
+      
+      // ⑤ 現在のセトリを再描画（仕様書 9.5.2）
+      renderSetlist(state.currentIdx, data);
+      
+      // ⑥ 完了メッセージ表示
+      showToast('✅ セトリを更新しました');
+      closeModal();
+      
+    } catch(e) {
+      // ⑦ エラー処理（仕様書 9.6）
+      if (!navigator.onLine) {
+        showToast('❌ セトリ更新失敗: ネットワークエラー');
+      } else if (e.message && e.message.includes('429')) {
+        showToast('⏳ API制限中です。しばらく待ってから再度お試しください');
+      } else if (e.message && e.message.includes('timeout')) {
+        showToast('❌ セトリ更新失敗: タイムアウト');
+      } else {
         showToast('❌ セトリ更新失敗: ' + e.message);
-      });
+      }
+    }
   }
 
   // ============================================================
