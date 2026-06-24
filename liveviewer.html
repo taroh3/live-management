@@ -178,7 +178,12 @@
     }
     .artist-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
-    .setlist-area { padding: 14px 16px; }
+    .setlist-area {
+      padding: 14px 16px;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
     .setlist-label {
       font-size: 10px; font-weight: 700;
       color: var(--text-dim);
@@ -488,6 +493,7 @@
     /* ポスター写真エリア：長押し誤動作防止 */
     .poster-area {
       -webkit-touch-callout: none;
+      -webkit-user-select: none;
       user-select: none;
     }
     .poster-area img { pointer-events: none; }
