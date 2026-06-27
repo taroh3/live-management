@@ -236,7 +236,7 @@
       flex-shrink: 0; display: flex; align-items: baseline; gap: 6px;
     }
     .artist-stat-label { font-size: 18px; color: var(--text-sub); }
-    .artist-stat-num   { font-size: 24px; font-weight: 800; color: var(--text); }
+    .artist-stat-num   { font-size: 30px; font-weight: 800; color: var(--text); }
     .artist-stat-sep   { font-size: 24px; color: var(--text-sub); }
     .artist-list { overflow-y: auto; flex: 1; padding: 12px 16px; }
     .artist-item {
@@ -259,6 +259,7 @@
       font-size: 20px; font-weight: 800;
       color: var(--accent); flex-shrink: 0;
     }
+    .artist-item-count .num-attended { color: #ffffff; }
 
     /* ============ 統計 ============ */
     .stats-page { overflow-y: auto; height: 100%; }
@@ -2180,6 +2181,33 @@
   // ============================================================
   // 演者一覧
   // ============================================================
+  function _computeStatsFromConcerts(tab) {
+    // 手持ちの全公演を結合（重複排除）
+    const seen = {};
+    const all  = [];
+    Object.values(state.concertsByYear || {}).forEach(arr => {
+      (arr || []).forEach(c => {
+        if (c && c.id && !seen[c.id]) { seen[c.id] = true; all.push(c); }
+      });
+    });
+    if (all.length === 0) return null;
+
+    const today = new Date().toISOString().slice(0, 10);
+    let attended = 0, planned = 0;
+
+    all.forEach(c => {
+      if (c.status === 'キャンセル') return;
+      const year = (c.date || '').slice(0, 4);
+      if (!year) return;
+      if (tab !== 'all' && year !== tab) return;
+
+      planned++;
+      if (c.date <= today) attended++;
+    });
+
+    return { attended: attended, planned: planned };
+  }
+
   function renderArtists() {
     const tab = state.currentArtistTab; // 'all' または年文字列
 
@@ -2215,8 +2243,15 @@
 
     // --- 上部統計（仕様書5.4）：公演単位の実数（対バン重複なし）---
     const stats = state.artistStats || {};
-    const stat  = (tab === 'all') ? (stats.all || { attended: 0, planned: 0 })
-                                  : (stats[tab] || { attended: 0, planned: 0 });
+    let stat = (tab === 'all') ? stats.all : stats[tab];
+
+    // statsが未取得（旧キャッシュ等）の場合は手持ちの公演から再計算
+    if (!stat || (stat.attended === 0 && stat.planned === 0)) {
+      const computed = _computeStatsFromConcerts(tab);
+      if (computed) stat = computed;
+    }
+    stat = stat || { attended: 0, planned: 0 };
+
     const statAttended = stat.attended || 0;
     const statPlanned  = stat.planned  || 0;
     const statBar = document.getElementById('artist-stat-bar');
@@ -2243,7 +2278,7 @@
         <div class="artist-info">
           <div class="artist-item-name">${esc(a.name)}</div>
         </div>
-        <div class="artist-item-count">${r.attended}/${r.planned}本</div>
+        <div class="artist-item-count"><span class="num-attended">${r.attended}</span>/${r.planned}本</div>
       </div>
     `;
     }).join('');
