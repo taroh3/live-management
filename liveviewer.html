@@ -235,9 +235,9 @@
       padding: 10px 16px; border-bottom: 1px solid var(--border);
       flex-shrink: 0; display: flex; align-items: baseline; gap: 6px;
     }
-    .artist-stat-label { font-size: 13px; color: var(--text-sub); }
-    .artist-stat-num   { font-size: 18px; font-weight: 800; color: var(--text); }
-    .artist-stat-sep   { font-size: 18px; color: var(--text-sub); }
+    .artist-stat-label { font-size: 18px; color: var(--text-sub); }
+    .artist-stat-num   { font-size: 24px; font-weight: 800; color: var(--text); }
+    .artist-stat-sep   { font-size: 24px; color: var(--text-sub); }
     .artist-list { overflow-y: auto; flex: 1; padding: 12px 16px; }
     .artist-item {
       display: flex; align-items: center; gap: 14px;
@@ -767,34 +767,7 @@
   // ============================================================
   // 初期化
   // ============================================================
-  async function hardReset(reason) {
-    try {
-      if ('serviceWorker' in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        for (const r of regs) { await r.unregister(); }
-      }
-    } catch(e) {}
-    try {
-      if (window.caches) {
-        const keys = await caches.keys();
-        for (const k of keys) { await caches.delete(k); }
-      }
-    } catch(e) {}
-    try { localStorage.clear(); } catch(e) {}
-    try { sessionStorage.clear(); } catch(e) {}
-    const u = new URL(location.href);
-    u.searchParams.delete('reset');
-    location.replace(u.toString());
-  }
-
   window.addEventListener('load', async () => {
-    if (new URLSearchParams(location.search).has('reset')) {
-      const lm = document.getElementById('loading-msg');
-      if (lm) lm.textContent = 'リセット中...';
-      await hardReset('manual');
-      return;
-    }
-
     // Service Worker登録
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('liveviewer_sw.js').catch(() => {});
@@ -803,29 +776,18 @@
     try {
       // 【Ver1.5】localStorageにデータが残っていれば即時表示（起動高速化）
       const thisYear   = String(new Date().getFullYear());
-
-      let lsYears, lsArtists, lsArtistYears, lsConcerts;
-      try {
-        lsYears       = localStorage.getItem('lv_years');
-        lsArtists     = localStorage.getItem('lv_artists');
-        lsArtistYears = localStorage.getItem('lv_artist_years');
-        lsConcerts    = localStorage.getItem('lv_concerts_' + thisYear);
-        if (lsYears)    JSON.parse(lsYears);
-        if (lsArtists)  JSON.parse(lsArtists);
-        if (lsConcerts) JSON.parse(lsConcerts);
-        if (lsArtistYears) JSON.parse(lsArtistYears);
-      } catch(parseErr) {
-        const lm = document.getElementById('loading-msg');
-        if (lm) lm.textContent = 'キャッシュ修復中...';
-        await hardReset('corrupt');
-        return;
-      }
+      const lsYears    = localStorage.getItem('lv_years');
+      const lsArtists  = localStorage.getItem('lv_artists');
+      const lsArtistYears = localStorage.getItem('lv_artist_years');
+      const lsArtistStats = localStorage.getItem('lv_artist_stats');
+      const lsConcerts = localStorage.getItem('lv_concerts_' + thisYear);
 
       if (lsYears && lsArtists && lsConcerts) {
         state.years                    = JSON.parse(lsYears);
         state.currentFilterYear        = thisYear;
         state.artists                  = JSON.parse(lsArtists);
         state.artistYears              = lsArtistYears ? JSON.parse(lsArtistYears) : [];
+        state.artistStats              = lsArtistStats ? JSON.parse(lsArtistStats) : {};
         state.concertsByYear[thisYear] = JSON.parse(lsConcerts);
         state.concerts                 = JSON.parse(lsConcerts);
 
@@ -856,16 +818,19 @@
 
       const artists     = artistsResp.artists || [];
       const artistYears = artistsResp.years   || [];
+      const artistStats = artistsResp.stats   || {};
 
       localStorage.setItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
       localStorage.setItem('lv_artists', JSON.stringify(artists));
       localStorage.setItem('lv_artist_years', JSON.stringify(artistYears));
+      localStorage.setItem('lv_artist_stats', JSON.stringify(artistStats));
       localStorage.setItem('lv_years',   JSON.stringify(years));
 
       state.concertsByYear[state.currentFilterYear] = concerts;
       state.concerts     = concerts;
       state.artists      = artists;
       state.artistYears  = artistYears;
+      state.artistStats  = artistStats;
 
       document.getElementById('loading-msg').textContent = 'アーティスト画像取得中...';
       await _loadArtistImages();
@@ -880,17 +845,7 @@
       goTo(_findNearestIdx(state.filteredConcerts, today));
 
     } catch(e) {
-      const msg = String(e && e.message || e);
-      const isFatal = msg.indexOf('JSON') >= 0 ||
-                      msg.indexOf('Unexpected') >= 0 ||
-                      msg.indexOf('undefined') >= 0;
-      const lm = document.getElementById('loading-msg');
-      if (isFatal) {
-        lm.innerHTML = 'データの読み込みに失敗しました。<br>キャッシュを修復します...';
-        await hardReset('fatal-catch');
-        return;
-      }
-      lm.textContent = 'エラー: ' + msg;
+      document.getElementById('loading-msg').textContent = 'エラー: ' + e.message;
       return;
     }
 
@@ -2258,9 +2213,12 @@
       : rows.filter(r => r.planned > 0);
     visible.sort((a, b) => b.planned - a.planned);
 
-    // --- 上部統計（仕様書5.4）：参戦本数 合計実績/合計予定 ---
-    const statAttended = visible.reduce((s, r) => s + r.attended, 0);
-    const statPlanned  = visible.reduce((s, r) => s + r.planned,  0);
+    // --- 上部統計（仕様書5.4）：公演単位の実数（対バン重複なし）---
+    const stats = state.artistStats || {};
+    const stat  = (tab === 'all') ? (stats.all || { attended: 0, planned: 0 })
+                                  : (stats[tab] || { attended: 0, planned: 0 });
+    const statAttended = stat.attended || 0;
+    const statPlanned  = stat.planned  || 0;
     const statBar = document.getElementById('artist-stat-bar');
     if (statBar) {
       statBar.innerHTML =
@@ -2284,9 +2242,8 @@
         </div>
         <div class="artist-info">
           <div class="artist-item-name">${esc(a.name)}</div>
-          <div class="artist-item-sub">${r.attended}/${r.planned}本</div>
         </div>
-        <div class="artist-item-count">${r.planned}</div>
+        <div class="artist-item-count">${r.attended}/${r.planned}本</div>
       </div>
     `;
     }).join('');
@@ -2297,16 +2254,72 @@
     renderArtists();
   }
 
-  function goToArtist(artistId) {
-    // 公演一覧をそのアーティストでフィルタリング
-    const artist = state.artists.find(a => a.id === artistId);
+  async function _ensureYearConcerts(year) {
+    if (state.concertsByYear[year]) return state.concertsByYear[year];
+    try {
+      const data = await apiGet('concerts', { year: year });
+      state.concertsByYear[year] = data;
+      localStorage.setItem('lv_concerts_' + year, JSON.stringify(data));
+      return data;
+    } catch(e) {
+      return [];
+    }
+  }
+
+  async function _ensureAllYearsConcerts() {
+    const years = (state.years && state.years.length > 0)
+      ? state.years
+      : Object.keys(state.concertsByYear);
+    const all = [];
+    for (const y of years) {
+      const data = await _ensureYearConcerts(y);
+      all.push(...data);
+    }
+    all.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    return all;
+  }
+
+  async function goToArtist(artistId) {
+    const artist = (state.artists || []).find(a => a.id === artistId);
     if (!artist) return;
 
+    const artistTab = state.currentArtistTab; // 'all' または年文字列
+
     switchTab('concerts');
-    const chip = [...document.querySelectorAll('.filter-chip')]
-      .find(c => c.textContent === artist.name);
-    if (chip) {
-      applyFilter('artist', artist.name, chip);
+
+    // 演者一覧のタブ状態を公演一覧に引き継ぐ
+    if (artistTab === 'all') {
+      // すべて → 全年のそのアーティストの公演
+      state.concerts          = await _ensureAllYearsConcerts();
+      state.currentFilterYear = 'all';
+      state.filters = { artist: artist.name, year: null, prefecture: null };
+    } else {
+      // 年指定 → その年のそのアーティストの公演
+      state.concerts          = await _ensureYearConcerts(artistTab);
+      state.currentFilterYear = artistTab;
+      state.filters = { artist: artist.name, year: artistTab, prefecture: null };
+    }
+
+    state.selectedArtist = artist.name;
+    state.setlistCache   = {};
+    renderConcerts();
+    renderFilters();
+
+    // 初期表示位置（仕様書5.6・Table#16・4.4）
+    const today = new Date().toISOString().slice(0, 10);
+    const curY  = new Date().getFullYear();
+    if (artistTab === 'all') {
+      // 全年 → 本日に最も近い公演
+      goTo(_findNearestIdx(state.filteredConcerts, today));
+    } else if (parseInt(artistTab) < curY) {
+      // 過去年 → その年の最初の公演
+      goTo(0);
+    } else if (parseInt(artistTab) > curY) {
+      // 未来年 → その年の最初の公演
+      goTo(0);
+    } else {
+      // 当年 → 本日に最も近い公演
+      goTo(_findNearestIdx(state.filteredConcerts, today));
     }
   }
 
@@ -2466,15 +2479,18 @@
 
       const artists     = artistsResp.artists || [];
       const artistYears = artistsResp.years   || [];
+      const artistStats = artistsResp.stats   || {};
 
       localStorage.setItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
       localStorage.setItem('lv_artists', JSON.stringify(artists));
       localStorage.setItem('lv_artist_years', JSON.stringify(artistYears));
+      localStorage.setItem('lv_artist_stats', JSON.stringify(artistStats));
 
       state.concertsByYear[state.currentFilterYear] = concerts;
       state.concerts     = concerts;
       state.artists      = artists;
       state.artistYears  = artistYears;
+      state.artistStats  = artistStats;
       state.setlistCache = {};
       state.statsData    = null;
       // localStorageのセットリストキャッシュを全クリア
