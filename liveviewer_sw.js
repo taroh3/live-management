@@ -8,10 +8,10 @@
  * v1.0.0 - 初版作成
  */
 
-var CACHE_NAME    = 'liveviewer-v4';
+var CACHE_NAME    = 'liveviewer-v6';
 var STATIC_ASSETS = [
   './',
-  './liveviewer004.html',
+  './liveviewer006.html',
 ];
 
 // インストール
