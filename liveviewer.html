@@ -104,6 +104,7 @@
     }
     .page { display: none; width: 100%; height: 100%; }
     .page.active { display: block; }
+    #page-artists.active { display: flex; flex-direction: column; }
 
     /* ============ スワイパー ============ */
     .swiper-outer { width: 100%; height: 100%; overflow: hidden; position: relative; }
@@ -214,7 +215,30 @@
     }
 
     /* ============ 演者一覧 ============ */
-    .artist-list { overflow-y: auto; height: 100%; padding: 12px 16px; }
+    .artist-year-tabs {
+      display: flex; gap: 8px; padding: 10px 16px;
+      overflow-x: auto; white-space: nowrap;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .artist-year-tabs::-webkit-scrollbar { display: none; }
+    .artist-year-tab {
+      padding: 6px 14px; border-radius: 16px;
+      background: var(--bg-card); color: var(--text-sub);
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      border: 1px solid var(--border); flex-shrink: 0;
+    }
+    .artist-year-tab.active {
+      background: var(--accent); color: #fff; border-color: var(--accent);
+    }
+    .artist-stat-bar {
+      padding: 10px 16px; border-bottom: 1px solid var(--border);
+      flex-shrink: 0; display: flex; align-items: baseline; gap: 6px;
+    }
+    .artist-stat-label { font-size: 13px; color: var(--text-sub); }
+    .artist-stat-num   { font-size: 18px; font-weight: 800; color: var(--text); }
+    .artist-stat-sep   { font-size: 18px; color: var(--text-sub); }
+    .artist-list { overflow-y: auto; flex: 1; padding: 12px 16px; }
     .artist-item {
       display: flex; align-items: center; gap: 14px;
       padding: 12px 0; border-bottom: 1px solid var(--border);
@@ -582,6 +606,8 @@
 
   <!-- 演者一覧ページ -->
   <div class="page" id="page-artists">
+    <div class="artist-year-tabs" id="artist-year-tabs"></div>
+    <div class="artist-stat-bar" id="artist-stat-bar"></div>
     <div class="artist-list" id="artist-list"></div>
   </div>
 
@@ -656,6 +682,8 @@
     years:              [],
     currentFilterYear:  String(new Date().getFullYear()),
     artists:            [],
+    artistYears:        [],
+    currentArtistTab:   'all',
     currentIdx:         0,
     currentTab:         'concerts',
     currentYear:        new Date().getFullYear(),
@@ -750,12 +778,14 @@
       const thisYear   = String(new Date().getFullYear());
       const lsYears    = localStorage.getItem('lv_years');
       const lsArtists  = localStorage.getItem('lv_artists');
+      const lsArtistYears = localStorage.getItem('lv_artist_years');
       const lsConcerts = localStorage.getItem('lv_concerts_' + thisYear);
 
       if (lsYears && lsArtists && lsConcerts) {
         state.years                    = JSON.parse(lsYears);
         state.currentFilterYear        = thisYear;
         state.artists                  = JSON.parse(lsArtists);
+        state.artistYears              = lsArtistYears ? JSON.parse(lsArtistYears) : [];
         state.concertsByYear[thisYear] = JSON.parse(lsConcerts);
         state.concerts                 = JSON.parse(lsConcerts);
 
@@ -779,18 +809,23 @@
       state.currentFilterYear = thisYear;
 
       document.getElementById('loading-msg').textContent = '公演データ取得中...';
-      const [concerts, artists] = await Promise.all([
+      const [concerts, artistsResp] = await Promise.all([
         apiGet('concerts', { year: state.currentFilterYear }),
-        apiGet('artists'),
+        apiGet('artists_v2'),
       ]);
+
+      const artists     = artistsResp.artists || [];
+      const artistYears = artistsResp.years   || [];
 
       localStorage.setItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
       localStorage.setItem('lv_artists', JSON.stringify(artists));
+      localStorage.setItem('lv_artist_years', JSON.stringify(artistYears));
       localStorage.setItem('lv_years',   JSON.stringify(years));
 
       state.concertsByYear[state.currentFilterYear] = concerts;
-      state.concerts = concerts;
-      state.artists  = artists;
+      state.concerts     = concerts;
+      state.artists      = artists;
+      state.artistYears  = artistYears;
 
       document.getElementById('loading-msg').textContent = 'アーティスト画像取得中...';
       await _loadArtistImages();
@@ -2141,8 +2176,56 @@
   // 演者一覧
   // ============================================================
   function renderArtists() {
+    const tab = state.currentArtistTab; // 'all' または年文字列
+
+    // --- 年タブ描画 ---
+    const tabsEl = document.getElementById('artist-year-tabs');
+    if (tabsEl) {
+      const tabList = ['all'].concat(state.artistYears || []);
+      tabsEl.innerHTML = tabList.map(t => {
+        const label  = (t === 'all') ? 'すべて' : (t + '年');
+        const active = (t === tab) ? ' active' : '';
+        return `<div class="artist-year-tab${active}" onclick="switchArtistYearTab('${t}')">${label}</div>`;
+      }).join('');
+    }
+
+    // --- 各アーティストの「左の数値・右の数値」を算出 ---
+    const rows = (state.artists || []).map(a => {
+      let attended, planned;
+      if (tab === 'all') {
+        attended = a.total_attended || 0;
+        planned  = a.total_planned  || 0;
+      } else {
+        attended = (a.by_year         && a.by_year[tab])         || 0;
+        planned  = (a.by_year_planned && a.by_year_planned[tab]) || 0;
+      }
+      return { artist: a, attended: attended, planned: planned };
+    });
+
+    // --- 並び順：選択タブの「全参戦予定（分母）」が多い順（仕様書5.10）---
+    const visible = (tab === 'all')
+      ? rows
+      : rows.filter(r => r.planned > 0);
+    visible.sort((a, b) => b.planned - a.planned);
+
+    // --- 上部統計（仕様書5.4）：参戦本数 合計実績/合計予定 ---
+    const statAttended = visible.reduce((s, r) => s + r.attended, 0);
+    const statPlanned  = visible.reduce((s, r) => s + r.planned,  0);
+    const statBar = document.getElementById('artist-stat-bar');
+    if (statBar) {
+      statBar.innerHTML =
+        `<span class="artist-stat-label">参戦本数:</span>` +
+        `<span class="artist-stat-num">${statAttended}</span>` +
+        `<span class="artist-stat-sep">/</span>` +
+        `<span class="artist-stat-num">${statPlanned}</span>` +
+        `<span class="artist-stat-label">本</span>`;
+    }
+
+    // --- アーティスト一覧 ---
     const list = document.getElementById('artist-list');
-    list.innerHTML = state.artists.map(a => `
+    list.innerHTML = visible.map(r => {
+      const a = r.artist;
+      return `
       <div class="artist-item" onclick="goToArtist('${a.id}')">
         <div class="artist-icon">
           ${a.default_img_url
@@ -2151,11 +2234,17 @@
         </div>
         <div class="artist-info">
           <div class="artist-item-name">${esc(a.name)}</div>
-          <div class="artist-item-sub">${a.concert_count}本 / ${a.song_count}曲</div>
+          <div class="artist-item-sub">${r.attended}/${r.planned}本</div>
         </div>
-        <div class="artist-item-count">${a.concert_count}</div>
+        <div class="artist-item-count">${r.planned}</div>
       </div>
-    `).join('');
+    `;
+    }).join('');
+  }
+
+  function switchArtistYearTab(tab) {
+    state.currentArtistTab = tab;
+    renderArtists();
   }
 
   function goToArtist(artistId) {
@@ -2296,6 +2385,12 @@
     document.getElementById('filter-bar').style.display = tab === 'concerts' ? 'flex' : 'none';
     document.getElementById('counter').style.display    = tab === 'concerts' ? 'block' : 'none';
 
+    // 演者一覧へ遷移したらタブを「すべて」にリセット（仕様書5.12.3）
+    if (tab === 'artists') {
+      state.currentArtistTab = 'all';
+      renderArtists();
+    }
+
     if (tab === 'stats' && !state.statsData) {
       await renderStats();
     }
@@ -2314,17 +2409,22 @@
       Object.keys(localStorage)
         .filter(k => k.startsWith('lv_concerts_'))
         .forEach(k => localStorage.removeItem(k));
-      const [concerts, artists] = await Promise.all([
+      const [concerts, artistsResp] = await Promise.all([
         apiGet('concerts', { year: state.currentFilterYear }),
-        apiGet('artists'),
+        apiGet('artists_v2'),
       ]);
+
+      const artists     = artistsResp.artists || [];
+      const artistYears = artistsResp.years   || [];
 
       localStorage.setItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
       localStorage.setItem('lv_artists', JSON.stringify(artists));
+      localStorage.setItem('lv_artist_years', JSON.stringify(artistYears));
 
       state.concertsByYear[state.currentFilterYear] = concerts;
       state.concerts     = concerts;
       state.artists      = artists;
+      state.artistYears  = artistYears;
       state.setlistCache = {};
       state.statsData    = null;
       // localStorageのセットリストキャッシュを全クリア
