@@ -767,7 +767,34 @@
   // ============================================================
   // 初期化
   // ============================================================
+  async function hardReset(reason) {
+    try {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        for (const r of regs) { await r.unregister(); }
+      }
+    } catch(e) {}
+    try {
+      if (window.caches) {
+        const keys = await caches.keys();
+        for (const k of keys) { await caches.delete(k); }
+      }
+    } catch(e) {}
+    try { localStorage.clear(); } catch(e) {}
+    try { sessionStorage.clear(); } catch(e) {}
+    const u = new URL(location.href);
+    u.searchParams.delete('reset');
+    location.replace(u.toString());
+  }
+
   window.addEventListener('load', async () => {
+    if (new URLSearchParams(location.search).has('reset')) {
+      const lm = document.getElementById('loading-msg');
+      if (lm) lm.textContent = 'リセット中...';
+      await hardReset('manual');
+      return;
+    }
+
     // Service Worker登録
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('liveviewer_sw.js').catch(() => {});
@@ -776,10 +803,23 @@
     try {
       // 【Ver1.5】localStorageにデータが残っていれば即時表示（起動高速化）
       const thisYear   = String(new Date().getFullYear());
-      const lsYears    = localStorage.getItem('lv_years');
-      const lsArtists  = localStorage.getItem('lv_artists');
-      const lsArtistYears = localStorage.getItem('lv_artist_years');
-      const lsConcerts = localStorage.getItem('lv_concerts_' + thisYear);
+
+      let lsYears, lsArtists, lsArtistYears, lsConcerts;
+      try {
+        lsYears       = localStorage.getItem('lv_years');
+        lsArtists     = localStorage.getItem('lv_artists');
+        lsArtistYears = localStorage.getItem('lv_artist_years');
+        lsConcerts    = localStorage.getItem('lv_concerts_' + thisYear);
+        if (lsYears)    JSON.parse(lsYears);
+        if (lsArtists)  JSON.parse(lsArtists);
+        if (lsConcerts) JSON.parse(lsConcerts);
+        if (lsArtistYears) JSON.parse(lsArtistYears);
+      } catch(parseErr) {
+        const lm = document.getElementById('loading-msg');
+        if (lm) lm.textContent = 'キャッシュ修復中...';
+        await hardReset('corrupt');
+        return;
+      }
 
       if (lsYears && lsArtists && lsConcerts) {
         state.years                    = JSON.parse(lsYears);
@@ -840,7 +880,17 @@
       goTo(_findNearestIdx(state.filteredConcerts, today));
 
     } catch(e) {
-      document.getElementById('loading-msg').textContent = 'エラー: ' + e.message;
+      const msg = String(e && e.message || e);
+      const isFatal = msg.indexOf('JSON') >= 0 ||
+                      msg.indexOf('Unexpected') >= 0 ||
+                      msg.indexOf('undefined') >= 0;
+      const lm = document.getElementById('loading-msg');
+      if (isFatal) {
+        lm.innerHTML = 'データの読み込みに失敗しました。<br>キャッシュを修復します...';
+        await hardReset('fatal-catch');
+        return;
+      }
+      lm.textContent = 'エラー: ' + msg;
       return;
     }
 
