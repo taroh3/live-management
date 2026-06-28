@@ -1,0 +1,898 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="たろうのLive Gallery">
+  <link rel="manifest" href="60_live_gallery_manifest.json">
+  <title>たろうのLive Gallery</title>
+  <style>
+    :root {
+      --bg:         #0f1210;
+      --bg-card:    #181e1b;
+      --bg-header:  #131917;
+      --accent:     #4caf7d;
+      --accent-dim: #1e4d35;
+      --text:       #e8f0ec;
+      --text-sub:   #7a9485;
+      --text-dim:   #4a6058;
+      --border:     #243028;
+      --encore:     #7ec9a0;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, 'Hiragino Sans', sans-serif;
+      height: 100dvh;
+      overflow: hidden;
+    }
+
+    /* ============ ローディング ============ */
+    .loading {
+      position: fixed; inset: 0; z-index: 3000;
+      background: var(--bg);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 20px;
+      transition: opacity 0.4s;
+    }
+    .loading.hidden { opacity: 0; pointer-events: none; }
+    .loading-icon { font-size: 60px; }
+    .loading-title { font-size: 22px; font-weight: 800; color: var(--accent); }
+    .loading-msg { font-size: 13px; color: var(--text-sub); }
+    .spinner {
+      width: 30px; height: 30px;
+      border: 2px solid var(--border); border-top-color: var(--accent);
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ============ パスワード画面 ============ */
+    .pw-screen {
+      position: fixed; inset: 0; z-index: 2000;
+      background: var(--bg);
+      display: none;
+      flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 32px 24px; gap: 28px;
+    }
+    .pw-screen.show { display: flex; }
+    .pw-logo { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    .pw-logo-icon { font-size: 48px; }
+    .pw-logo-text { font-size: 22px; font-weight: 800; color: var(--accent); }
+    .pw-box { width: 100%; max-width: 300px; display: flex; flex-direction: column; gap: 12px; }
+    .pw-label { font-size: 12px; color: var(--text-sub); text-align: center; }
+    .pw-input {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 12px; padding: 15px 16px;
+      font-size: 16px; color: var(--text);
+      width: 100%; outline: none; text-align: center;
+    }
+    .pw-input:focus { border-color: var(--accent); }
+    .pw-btn {
+      background: var(--accent); color: #0f1210;
+      border: none; border-radius: 12px;
+      padding: 15px; font-size: 15px; font-weight: 800;
+      cursor: pointer; width: 100%;
+    }
+    .pw-error { font-size: 12px; color: #e57373; text-align: center; min-height: 16px; }
+    .pw-note { font-size: 11px; color: var(--text-dim); text-align: center; }
+
+    /* ============ オフラインバー ============ */
+    .offline-bar {
+      display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 500;
+      background: #5a3a00; color: #ffcc00;
+      font-size: 12px; text-align: center; padding: 5px;
+    }
+    .offline-bar.show { display: block; }
+
+    /* ============ ヘッダー ============ */
+    .header {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      background: var(--bg-header);
+      border-bottom: 1px solid var(--border);
+      padding-top: env(safe-area-inset-top);
+    }
+    .header-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0 16px; height: 48px;
+    }
+    .header-title { font-size: 16px; font-weight: 800; color: var(--accent); }
+    .header-right { display: flex; align-items: center; gap: 8px; }
+    .header-counter { font-size: 12px; color: var(--text-sub); }
+    .jump-btn {
+      background: none; border: 1px solid var(--accent-dim);
+      border-radius: 6px; padding: 4px 8px;
+      font-size: 14px; color: var(--text-sub); cursor: pointer;
+    }
+
+    /* アーティストタブ */
+    .artist-tabs-bar {
+      display: flex; overflow-x: auto; scrollbar-width: none;
+      padding: 0 12px; gap: 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .artist-tabs-bar::-webkit-scrollbar { display: none; }
+    .artist-tab-btn {
+      flex-shrink: 0; padding: 8px 14px;
+      font-size: 12px; font-weight: 600;
+      color: var(--text-dim); cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap; transition: all 0.2s;
+    }
+    .artist-tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    /* 年フィルター */
+    .year-filter {
+      display: flex; gap: 6px; padding: 6px 16px 8px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .year-filter::-webkit-scrollbar { display: none; }
+    .year-chip {
+      flex-shrink: 0; background: var(--bg-card);
+      border: 1px solid var(--border); border-radius: 20px;
+      padding: 4px 12px; font-size: 11px; color: var(--text-dim);
+      cursor: pointer; transition: all 0.2s;
+    }
+    .year-chip.active {
+      background: var(--accent-dim); border-color: var(--accent);
+      color: var(--accent); font-weight: 700;
+    }
+
+    /* ============ メイン ============ */
+    .main {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      padding-top: calc(env(safe-area-inset-top) + 48px + 36px + 38px);
+      padding-bottom: calc(env(safe-area-inset-bottom) + 40px);
+    }
+
+    /* ============ スワイパー ============ */
+    .swiper-outer { width: 100%; height: 100%; overflow: hidden; }
+    .swiper-track {
+      display: flex; height: 100%;
+      transition: transform 0.35s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+      will-change: transform;
+    }
+    .swiper-slide {
+      flex-shrink: 0; width: 100%; height: 100%;
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .swiper-slide::-webkit-scrollbar { display: none; }
+
+    /* ============ 公演カード ============ */
+    .concert-card { display: flex; flex-direction: column; }
+
+    /* 上部：アーティスト写真（画面高さの約2/3） */
+    .artist-photo-area {
+      width: 100%; height: 62vh;
+      overflow: hidden; position: relative; flex-shrink: 0;
+      background: var(--bg-card);
+      -webkit-touch-callout: none;
+      -webkit-user-select: none; user-select: none;
+    }
+    .artist-photo-area img {
+      width: 100%; height: 100%; object-fit: cover;
+      pointer-events: none;
+    }
+    .artist-photo-placeholder {
+      width: 100%; height: 100%;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center; gap: 12px;
+      background: linear-gradient(160deg, #1a2e24 0%, #0f1a16 100%);
+    }
+    .placeholder-icon { font-size: 48px; opacity: 0.3; }
+    .placeholder-name {
+      font-size: 18px; font-weight: 800;
+      color: var(--accent); opacity: 0.6; text-align: center; padding: 0 20px;
+    }
+
+    /* 公演ナビオーバーレイ */
+    .photo-nav {
+      position: absolute; bottom: 0; left: 0; right: 0;
+      background: linear-gradient(transparent, rgba(0,0,0,0.65));
+      padding: 20px 16px 10px;
+      display: flex; align-items: flex-end; justify-content: space-between;
+    }
+    .nav-arrow {
+      background: rgba(255,255,255,0.1);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 50%; width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px; cursor: pointer; color: var(--text);
+      flex-shrink: 0; user-select: none;
+    }
+    .nav-arrow.disabled { opacity: 0.2; pointer-events: none; }
+    .nav-counter { font-size: 11px; color: rgba(255,255,255,0.5); text-align: center; }
+
+    /* 中部：公演情報 */
+    .concert-info {
+      flex-shrink: 0; padding: 14px 16px 12px;
+      border-bottom: 1px solid var(--border);
+      background: var(--bg-card);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    }
+    .concert-info-left { flex: 1; min-width: 0; }
+    .concert-date { font-size: 17px; font-weight: 800; color: var(--text); }
+    .concert-venue { font-size: 13px; color: var(--text-sub); margin-top: 3px; }
+    .photo-link-btn {
+      flex-shrink: 0;
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--accent-dim); border: 1px solid var(--accent);
+      border-radius: 10px; padding: 10px 14px;
+      font-size: 12px; font-weight: 700; color: var(--accent);
+      text-decoration: none; cursor: pointer;
+      white-space: nowrap;
+    }
+    .no-photo-label {
+      flex-shrink: 0; font-size: 12px; color: var(--text-dim);
+      padding: 10px 4px;
+    }
+
+    /* 下部：セットリスト */
+    .setlist-area {
+      flex: 1; padding: 14px 16px 32px;
+      background: var(--bg);
+    }
+    .setlist-header {
+      font-size: 10px; font-weight: 700;
+      color: var(--text-dim); letter-spacing: 0.12em;
+      text-transform: uppercase; margin-bottom: 10px;
+    }
+    .song-row {
+      display: flex; align-items: baseline; gap: 12px;
+      padding: 5px 0; border-bottom: 1px solid rgba(36,48,40,0.5);
+    }
+    .song-row:last-child { border-bottom: none; }
+    .song-num {
+      font-size: 11px; color: var(--text-dim);
+      min-width: 20px; text-align: right;
+      font-variant-numeric: tabular-nums; flex-shrink: 0;
+    }
+    .song-name { font-size: 14px; color: var(--text); line-height: 1.4; }
+    .song-name.encore { color: var(--encore); }
+    .encore-divider {
+      text-align: center; font-size: 10px;
+      color: var(--text-dim); padding: 10px 0 6px; letter-spacing: 0.15em;
+    }
+    .no-setlist { font-size: 13px; color: var(--text-dim); padding: 8px 0; }
+
+    /* ============ フッター（ドット） ============ */
+    .footer {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      height: 40px; background: var(--bg-header);
+      border-top: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      gap: 6px; padding-bottom: env(safe-area-inset-bottom);
+    }
+    .dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--border); transition: all 0.2s; flex-shrink: 0;
+    }
+    .dot.active { background: var(--accent); width: 18px; border-radius: 3px; }
+
+    /* ============ モーダル ============ */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 1000;
+      background: rgba(0,0,0,0.6); align-items: flex-end;
+    }
+    .modal-overlay.show { display: flex; }
+    .modal {
+      width: 100%; background: var(--bg-card);
+      border-radius: 16px 16px 0 0;
+      padding: 16px 20px 32px; max-height: 80vh; overflow-y: auto;
+    }
+    .modal-handle {
+      width: 36px; height: 4px; background: var(--border);
+      border-radius: 2px; margin: 0 auto 16px;
+    }
+    .modal-title { font-size: 16px; font-weight: 700; color: var(--text); margin-bottom: 16px; }
+    .modal-label { font-size: 12px; color: var(--text-sub); margin-bottom: 6px; }
+    .modal-input {
+      width: 100%; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 10px 12px;
+      font-size: 15px; color: var(--text); outline: none; margin-bottom: 12px;
+    }
+    .modal-input:focus { border-color: var(--accent); }
+    .modal-year-list {
+      display: flex; flex-direction: column; gap: 4px; margin-bottom: 16px;
+    }
+    .modal-year-item {
+      padding: 12px 16px; background: var(--bg);
+      border: 1px solid var(--border); border-radius: 8px;
+      font-size: 15px; color: var(--text); cursor: pointer;
+      transition: all 0.15s;
+    }
+    .modal-year-item:hover { border-color: var(--accent); color: var(--accent); }
+    .modal-save-btn {
+      width: 100%; background: var(--accent); color: #0f1210;
+      border: none; border-radius: 10px; padding: 14px;
+      font-size: 15px; font-weight: 800; cursor: pointer; margin-bottom: 8px;
+    }
+    .modal-cancel-btn {
+      width: 100%; background: none; color: var(--text-sub);
+      border: 1px solid var(--border); border-radius: 10px; padding: 12px;
+      font-size: 14px; cursor: pointer;
+    }
+
+    /* ============ トースト ============ */
+    .toast {
+      position: fixed; bottom: 60px; left: 50%; transform: translateX(-50%) translateY(10px);
+      background: rgba(30,40,35,0.95); color: var(--text);
+      padding: 10px 20px; border-radius: 20px;
+      font-size: 13px; white-space: nowrap; z-index: 2000;
+      opacity: 0; transition: opacity 0.3s, transform 0.3s; pointer-events: none;
+      border: 1px solid var(--border);
+    }
+    .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- ローディング -->
+<div class="loading" id="loading">
+  <div class="loading-icon">🎵</div>
+  <div class="loading-title">たろうのLive Gallery</div>
+  <div class="spinner"></div>
+  <div class="loading-msg" id="loading-msg">読み込み中...</div>
+</div>
+
+<!-- パスワード画面 -->
+<div class="pw-screen" id="pw-screen">
+  <div class="pw-logo">
+    <div class="pw-logo-icon">🎵</div>
+    <div class="pw-logo-text">たろうのLive Gallery</div>
+  </div>
+  <div class="pw-box">
+    <div class="pw-label">パスワードを入力してください</div>
+    <input class="pw-input" type="password" id="pw-input" placeholder="••••••••"
+      onkeydown="if(event.key==='Enter')doLogin()">
+    <button class="pw-btn" onclick="doLogin()">ログイン</button>
+    <div class="pw-error" id="pw-error"></div>
+  </div>
+  <div class="pw-note">次回から自動でログインされます</div>
+</div>
+
+<!-- オフラインバー -->
+<div class="offline-bar" id="offline-bar">
+  📴 オフラインです。最終同期データを表示しています
+</div>
+
+<!-- ヘッダー -->
+<div class="header" id="header" style="display:none">
+  <div class="header-inner">
+    <div class="header-title">🎵 Live Gallery</div>
+    <div class="header-right">
+      <button class="jump-btn" onclick="openDateJump()">📅</button>
+      <div class="header-counter" id="counter"></div>
+    </div>
+  </div>
+  <div class="artist-tabs-bar" id="artist-tabs-bar"></div>
+  <div class="year-filter" id="year-filter"></div>
+</div>
+
+<!-- メインコンテンツ -->
+<div class="main" id="main" style="display:none">
+  <div class="swiper-outer" id="swiper">
+    <div class="swiper-track" id="track"></div>
+  </div>
+</div>
+
+<!-- フッター -->
+<div class="footer" id="footer" style="display:none" id="dots-bar">
+  <div id="dots-inner" style="display:flex;gap:6px;align-items:center;"></div>
+</div>
+
+<!-- モーダル -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div id="modal-body"></div>
+  </div>
+</div>
+
+<!-- トースト -->
+<div class="toast" id="toast"></div>
+
+<script>
+  const GAS_URL = 'YOUR_GAS_WEBAPP_URL_HERE';
+  const GITHUB_BASE = 'https://taroh3.github.io/live-management/';
+
+  // ============================================================
+  // 状態管理
+  // ============================================================
+  var state = {
+    password:         '',
+    allowedArtists:   [],
+    artists:          [],
+    currentArtistIdx: 0,
+    concerts:         [],
+    filteredConcerts: [],
+    years:            [],
+    currentYear:      'all',
+    currentIdx:       0,
+    setlistCache:     {},
+    isOffline:        false,
+  };
+
+  // ============================================================
+  // Service Worker
+  // ============================================================
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('60_live_gallery_sw.js').catch(function() {});
+  }
+
+  // ============================================================
+  // 初期化
+  // ============================================================
+  window.addEventListener('load', function() {
+    var saved = localStorage.getItem('lg_password');
+    if (saved) {
+      state.password = saved;
+      authenticate(saved);
+    } else {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('pw-screen').classList.add('show');
+    }
+  });
+
+  // ============================================================
+  // パスワード認証
+  // ============================================================
+  function doLogin() {
+    var pw = document.getElementById('pw-input').value.trim();
+    if (!pw) return;
+    document.getElementById('pw-error').textContent = '';
+    state.password = pw;
+    authenticate(pw);
+  }
+
+  async function authenticate(pw) {
+    document.getElementById('loading-msg').textContent = '認証中...';
+    document.getElementById('loading').classList.remove('hidden');
+    document.getElementById('pw-screen').classList.remove('show');
+
+    try {
+      var url = GAS_URL + '?action=auth&password=' + encodeURIComponent(pw);
+      var res  = await fetch(url);
+      var data = await res.json();
+
+      if (!data.success) {
+        throw new Error(data.error || 'パスワードが違います');
+      }
+
+      localStorage.setItem('lg_password', pw);
+      state.allowedArtists = data.data.artists || [];
+
+      await loadData();
+
+    } catch(e) {
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('pw-screen').classList.add('show');
+      document.getElementById('pw-input').value = '';
+      document.getElementById('pw-error').textContent = e.message || 'パスワードが違います';
+      localStorage.removeItem('lg_password');
+    }
+  }
+
+  // ============================================================
+  // データ読み込み
+  // ============================================================
+  async function loadData() {
+    try {
+      document.getElementById('loading-msg').textContent = 'データ取得中...';
+
+      var lsKey    = 'lg_data_' + state.password;
+      var lsCached = localStorage.getItem(lsKey);
+
+      if (lsCached) {
+        var parsed = JSON.parse(lsCached);
+        state.artists  = parsed.artists  || [];
+        state.concerts = parsed.concerts || [];
+        state.years    = parsed.years    || [];
+        showMain();
+        return;
+      }
+
+      var url  = GAS_URL + '?action=gallery_data&password=' + encodeURIComponent(state.password);
+      var res  = await fetch(url);
+      var data = await res.json();
+
+      if (!data.success) throw new Error(data.error || 'データ取得失敗');
+
+      state.artists  = data.data.artists  || [];
+      state.concerts = data.data.concerts || [];
+      state.years    = data.data.years    || [];
+
+      try { localStorage.setItem(lsKey, JSON.stringify(data.data)); } catch(e2) {}
+
+      showMain();
+
+    } catch(e) {
+      if (!navigator.onLine) {
+        state.isOffline = true;
+        document.getElementById('offline-bar').classList.add('show');
+        var lsKey2   = 'lg_data_' + state.password;
+        var lsFallback = localStorage.getItem(lsKey2);
+        if (lsFallback) {
+          var p2 = JSON.parse(lsFallback);
+          state.artists  = p2.artists  || [];
+          state.concerts = p2.concerts || [];
+          state.years    = p2.years    || [];
+          showMain();
+          return;
+        }
+      }
+      document.getElementById('loading-msg').textContent = 'エラー: ' + e.message;
+    }
+  }
+
+  // ============================================================
+  // メイン画面表示
+  // ============================================================
+  function showMain() {
+    document.getElementById('loading').classList.add('hidden');
+    document.getElementById('pw-screen').classList.remove('show');
+    document.getElementById('header').style.display = 'block';
+    document.getElementById('main').style.display = 'block';
+    document.getElementById('footer').style.display = 'flex';
+
+    renderArtistTabs();
+    renderYearFilter();
+    renderConcerts();
+
+    var today = new Date().toISOString().slice(0, 10);
+    goTo(_findNearestIdx(state.filteredConcerts, today));
+  }
+
+  // ============================================================
+  // アーティストタブ
+  // ============================================================
+  function renderArtistTabs() {
+    var bar  = document.getElementById('artist-tabs-bar');
+    var html = '';
+    state.artists.forEach(function(a, i) {
+      html += '<div class="artist-tab-btn' + (i === 0 ? ' active' : '') +
+              '" onclick="switchArtist(' + i + ')">' + esc(a.name) + '</div>';
+    });
+    bar.innerHTML = html;
+    state.currentArtistIdx = 0;
+  }
+
+  function switchArtist(idx) {
+    state.currentArtistIdx = idx;
+    document.querySelectorAll('.artist-tab-btn').forEach(function(t, i) {
+      t.className = 'artist-tab-btn' + (i === idx ? ' active' : '');
+    });
+    state.currentYear = 'all';
+    renderYearFilter();
+    renderConcerts();
+    var today = new Date().toISOString().slice(0, 10);
+    goTo(_findNearestIdx(state.filteredConcerts, today));
+  }
+
+  // ============================================================
+  // 年フィルター
+  // ============================================================
+  function renderYearFilter() {
+    var bar  = document.getElementById('year-filter');
+    var html = '<div class="year-chip active" onclick="applyYear(\'all\', this)">すべて</div>';
+    state.years.forEach(function(y) {
+      html += '<div class="year-chip" onclick="applyYear(\'' + y + '\', this)">' + y + '年</div>';
+    });
+    bar.innerHTML = html;
+  }
+
+  function applyYear(year, el) {
+    state.currentYear = year;
+    document.querySelectorAll('.year-chip').forEach(function(c) { c.classList.remove('active'); });
+    el.classList.add('active');
+    renderConcerts();
+    var today = new Date().toISOString().slice(0, 10);
+    goTo(_findNearestIdx(state.filteredConcerts, today));
+  }
+
+  // ============================================================
+  // 公演レンダリング
+  // ============================================================
+  function renderConcerts() {
+    var artist = state.artists[state.currentArtistIdx];
+    if (!artist) { state.filteredConcerts = []; return; }
+
+    var artistId = artist.id;
+    state.filteredConcerts = state.concerts.filter(function(c) {
+      if (c.artist_id !== artistId) return false;
+      if (state.currentYear !== 'all' && (!c.date || c.date.slice(0, 4) !== state.currentYear)) return false;
+      return true;
+    });
+
+    var track = document.getElementById('track');
+    track.innerHTML = '';
+    state.filteredConcerts.forEach(function(c, i) {
+      var slide = document.createElement('div');
+      slide.className = 'swiper-slide';
+      slide.innerHTML = buildConcertCard(c, i, artist);
+      track.appendChild(slide);
+    });
+
+    updateCounter();
+    renderDots();
+  }
+
+  function buildConcertCard(c, idx, artist) {
+    var imgUrl = artist.photo_url
+      ? (GITHUB_BASE + 'gallery_artist_' + artist.id + '.jpg')
+      : '';
+
+    var photoHtml = imgUrl
+      ? '<img src="' + esc(imgUrl) + '" alt="' + esc(artist.name) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'">'
+      : '';
+    var placeholderStyle = imgUrl ? 'style="display:none"' : '';
+
+    var photoLinkHtml = c.photo_url
+      ? '<a class="photo-link-btn" href="' + esc(c.photo_url) + '" target="_blank" rel="noopener">📷 ライブ写真を見る</a>'
+      : '<span class="no-photo-label">写真なし</span>';
+
+    return '' +
+      '<div class="concert-card">' +
+        '<div class="artist-photo-area">' +
+          photoHtml +
+          '<div class="artist-photo-placeholder" ' + placeholderStyle + '>' +
+            '<div class="placeholder-icon">🎤</div>' +
+            '<div class="placeholder-name">' + esc(artist.name) + '</div>' +
+          '</div>' +
+          '<div class="photo-nav">' +
+            '<div class="nav-arrow' + (idx === 0 ? ' disabled' : '') + '" onclick="goTo(' + (idx - 1) + ')">&#8249;</div>' +
+            '<div class="nav-counter">' + (idx + 1) + ' / ' + state.filteredConcerts.length + '</div>' +
+            '<div class="nav-arrow' + (idx === state.filteredConcerts.length - 1 ? ' disabled' : '') + '" onclick="goTo(' + (idx + 1) + ')">&#8250;</div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="concert-info">' +
+          '<div class="concert-info-left">' +
+            '<div class="concert-date">' + esc(c.date_label) + '</div>' +
+            '<div class="concert-venue">📍 ' + esc(c.venue) + '</div>' +
+          '</div>' +
+          photoLinkHtml +
+        '</div>' +
+        '<div class="setlist-area" id="setlist-' + idx + '">' +
+          '<div class="no-setlist">セットリスト読み込み中...</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  // ============================================================
+  // セットリスト
+  // ============================================================
+  function loadSetlist(idx) {
+    var c = state.filteredConcerts[idx];
+    if (!c) return;
+
+    if (state.setlistCache[c.id]) {
+      renderSetlist(idx, state.setlistCache[c.id]);
+      return;
+    }
+
+    var lsKey    = 'lg_setlist_' + c.id;
+    var lsCached = localStorage.getItem(lsKey);
+    if (lsCached) {
+      state.setlistCache[c.id] = JSON.parse(lsCached);
+      renderSetlist(idx, state.setlistCache[c.id]);
+      return;
+    }
+
+    var url = GAS_URL + '?action=gallery_setlist&liveId=' + encodeURIComponent(c.id) +
+              '&password=' + encodeURIComponent(state.password);
+    fetch(url)
+      .then(function(r) { return r.json(); })
+      .then(function(data) {
+        if (!data.success) throw new Error(data.error);
+        state.setlistCache[c.id] = data.data;
+        try { localStorage.setItem(lsKey, JSON.stringify(data.data)); } catch(e) {}
+        renderSetlist(idx, data.data);
+      })
+      .catch(function() {
+        renderSetlist(idx, null);
+      });
+  }
+
+  function renderSetlist(idx, data) {
+    var el = document.getElementById('setlist-' + idx);
+    if (!el) return;
+
+    if (!data || !data.songs || data.songs.length === 0) {
+      el.innerHTML = '<div class="setlist-area"><div class="no-setlist">セトリ未登録</div></div>';
+      return;
+    }
+
+    var songs = data.songs;
+    var html  = '<div class="setlist-header">Setlist — ' + songs.length + '曲</div>';
+    var encoreShown = false;
+
+    songs.forEach(function(s) {
+      if (s.is_encore && !encoreShown) {
+        html += '<div class="encore-divider">— Encore —</div>';
+        encoreShown = true;
+      }
+      var numLabel = s.track !== null ? s.track : '—';
+      var cls      = s.is_encore ? 'song-name encore' : 'song-name';
+      html += '<div class="song-row">' +
+        '<span class="song-num">' + numLabel + '</span>' +
+        '<span class="' + cls + '">' + esc(s.song_name) + '</span>' +
+      '</div>';
+    });
+
+    el.innerHTML = html;
+  }
+
+  // ============================================================
+  // スワイパー
+  // ============================================================
+  var touchStartX = 0, touchStartY = 0;
+
+  document.addEventListener('touchstart', function(e) {
+    var x = e.touches[0].pageX;
+    if (x <= 20 || x >= window.innerWidth - 20) e.preventDefault();
+  }, { passive: false });
+
+  (function() {
+    var swiper = document.getElementById('swiper');
+    swiper.addEventListener('touchstart', function(e) {
+      touchStartX = e.touches[0].clientX;
+      touchStartY = e.touches[0].clientY;
+    }, { passive: true });
+
+    swiper.addEventListener('touchend', function(e) {
+      var dx = e.changedTouches[0].clientX - touchStartX;
+      var dy = e.changedTouches[0].clientY - touchStartY;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+        if (dx < 0) goTo(state.currentIdx + 1);
+        else        goTo(state.currentIdx - 1);
+      }
+    }, { passive: true });
+  })();
+
+  function goTo(idx) {
+    if (idx < 0 || idx >= state.filteredConcerts.length) return;
+    state.currentIdx = idx;
+    document.getElementById('track').style.transform = 'translateX(-' + (idx * 100) + '%)';
+    updateCounter();
+    updateDots(idx);
+    loadSetlist(idx);
+    prefetchAround(idx);
+  }
+
+  function prefetchAround(idx) {
+    [-2, -1, 1, 2].forEach(function(offset) {
+      var target = state.filteredConcerts[idx + offset];
+      if (!target) return;
+      if (state.setlistCache[target.id]) return;
+      if (localStorage.getItem('lg_setlist_' + target.id)) return;
+      loadSetlist(idx + offset);
+    });
+  }
+
+  function updateCounter() {
+    var total = state.filteredConcerts.length;
+    document.getElementById('counter').textContent =
+      total > 0 ? (state.currentIdx + 1) + ' / ' + total : '0 / 0';
+  }
+
+  // ============================================================
+  // ドットインジケーター
+  // ============================================================
+  function renderDots() {
+    var inner = document.getElementById('dots-inner');
+    var total = state.filteredConcerts.length;
+    var max   = 20;
+    if (total <= 1) { inner.innerHTML = ''; return; }
+    var count = Math.min(total, max);
+    var html  = '';
+    for (var i = 0; i < count; i++) {
+      html += '<div class="dot' + (i === 0 ? ' active' : '') + '" id="dot-' + i + '"></div>';
+    }
+    inner.innerHTML = html;
+  }
+
+  function updateDots(idx) {
+    var total = state.filteredConcerts.length;
+    var max   = 20;
+    var count = Math.min(total, max);
+    var dotIdx = Math.round((idx / (total - 1)) * (count - 1));
+    for (var i = 0; i < count; i++) {
+      var d = document.getElementById('dot-' + i);
+      if (d) d.className = 'dot' + (i === dotIdx ? ' active' : '');
+    }
+  }
+
+  // ============================================================
+  // 日時ジャンプ
+  // ============================================================
+  function openDateJump() {
+    var yearList = state.years.map(function(y) {
+      return '<div class="modal-year-item" onclick="jumpToYear(\'' + y + '\')">' + y + '年</div>';
+    }).join('');
+
+    var today = new Date().toISOString().slice(0, 10);
+    document.getElementById('modal-body').innerHTML =
+      '<div class="modal-title">📅 日時ジャンプ</div>' +
+      '<div class="modal-label">■ 年を選んでジャンプ</div>' +
+      '<div class="modal-year-list">' + yearList + '</div>' +
+      '<div class="modal-label">■ 日付を指定してジャンプ</div>' +
+      '<input class="modal-input" type="date" id="jump-date" value="' + today + '">' +
+      '<button class="modal-save-btn" onclick="doDateJump()">この日付にジャンプ</button>' +
+      '<button class="modal-cancel-btn" onclick="closeModal()">キャンセル</button>';
+    openModal();
+  }
+
+  function jumpToYear(year) {
+    var firstIdx = state.filteredConcerts.findIndex(function(c) {
+      return (c.date || '').slice(0, 4) === year;
+    });
+    closeModal();
+    if (firstIdx >= 0) {
+      goTo(firstIdx);
+      showToast(year + '年の最初の公演へジャンプしました');
+    } else {
+      var el = document.querySelector('.year-chip[onclick*="' + year + '"]');
+      if (el) applyYear(year, el);
+    }
+  }
+
+  function doDateJump() {
+    var dateVal = document.getElementById('jump-date').value;
+    if (!dateVal) return;
+    var idx = _findNearestIdx(state.filteredConcerts, dateVal);
+    closeModal();
+    goTo(idx);
+    showToast((state.filteredConcerts[idx] ? state.filteredConcerts[idx].date_label : dateVal) + ' にジャンプしました');
+  }
+
+  // ============================================================
+  // モーダル
+  // ============================================================
+  function openModal() {
+    document.getElementById('modal-overlay').classList.add('show');
+  }
+  function closeModal() {
+    document.getElementById('modal-overlay').classList.remove('show');
+  }
+  function closeModalOutside(e) {
+    if (e.target === document.getElementById('modal-overlay')) closeModal();
+  }
+
+  // ============================================================
+  // ユーティリティ
+  // ============================================================
+  function _findNearestIdx(concerts, dateStr) {
+    if (!concerts || concerts.length === 0) return 0;
+    var idx = concerts.findIndex(function(c) { return c.date >= dateStr; });
+    if (idx >= 0) return idx;
+    return concerts.length - 1;
+  }
+
+  function showToast(msg) {
+    var t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(function() { t.classList.remove('show'); }, 2500);
+  }
+
+  function esc(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  history.replaceState(null, '', location.href);
+  window.addEventListener('popstate', function() {
+    history.pushState(null, '', location.href);
+  });
+</script>
+</body>
+</html>

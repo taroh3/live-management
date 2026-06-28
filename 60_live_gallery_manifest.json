@@ -1,0 +1,20 @@
+{
+  "name": "たろうのLive Gallery",
+  "short_name": "Live Gallery",
+  "start_url": "./60_live_gallery.html",
+  "display": "standalone",
+  "background_color": "#0f1210",
+  "theme_color": "#0f1210",
+  "icons": [
+    {
+      "src": "icon192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
