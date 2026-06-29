@@ -620,8 +620,13 @@
     document.querySelectorAll('.year-chip').forEach(function(c) { c.classList.remove('active'); });
     el.classList.add('active');
     renderConcerts();
-    var today = new Date().toISOString().slice(0, 10);
-    goTo(_findNearestIdx(state.filteredConcerts, today));
+    if (year === 'all') {
+      var today = new Date().toISOString().slice(0, 10);
+      goTo(_findNearestIdx(state.filteredConcerts, today));
+    } else {
+      // 特定の年は年始（最初）の公演を表示
+      goTo(0);
+    }
   }
 
   // ============================================================
