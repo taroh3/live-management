@@ -401,7 +401,7 @@
 <script>
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbz2uM0H3ONycJoMghmgp-aNP24nVkZD34cZYwIOx4U74ltxeWPLNZGreEDkDMjo1H0C/exec';
   const GITHUB_BASE = 'https://taroh3.github.io/live-management/';
-  const DATA_VERSION = '2';  // データ構造変更時にインクリメント→古いキャッシュを自動破棄
+  const DATA_VERSION = '3';  // データ構造変更時にインクリメント→古いキャッシュを自動破棄
 
   // ============================================================
   // 状態管理
@@ -629,7 +629,7 @@
 
   function buildConcertCard(c, idx, artist) {
     var imgUrl = artist.photo_url
-      ? (GITHUB_BASE + 'gallery_artist_' + artist.id + '.jpg')
+      ? (GITHUB_BASE + 'gallery_artist_' + artist.id.replace(/-/g, '') + '.jpg')
       : '';
 
     var photoHtml = imgUrl
