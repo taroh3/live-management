@@ -169,7 +169,7 @@
 
     /* 上部：アーティスト写真（画面高さの約2/3） */
     .artist-photo-area {
-      width: 100%; height: 62vh;
+      width: 100%; height: 35vh;
       overflow: hidden; position: relative; flex-shrink: 0;
       background: var(--bg-card);
       -webkit-touch-callout: none;
@@ -768,13 +768,6 @@
   }
 
   function prefetchAround(idx) {
-    [-2, -1, 1, 2].forEach(function(offset) {
-      var target = state.filteredConcerts[idx + offset];
-      if (!target) return;
-      if (state.setlistCache[target.id]) return;
-      if (localStorage.getItem('lg_setlist_' + target.id)) return;
-      loadSetlist(idx + offset);
-    });
   }
 
   function updateCounter() {
