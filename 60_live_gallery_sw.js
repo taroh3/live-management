@@ -1,14 +1,15 @@
 // 60_live_gallery_sw.js
 // たろうのLive Gallery Service Worker
-// v4.0.0
+// v5.0.0
 //
 // 変更履歴：
+// v5.0.0 - ポスター長押しライトボックス追加
 // v4.0.0 - アーティスト写真を上詰め表示に変更
 // v3.0.0 - 写真ファイル名のID形式統一に伴うキャッシュ更新
 // v2.0.0 - キャッシュ名をv2に更新・対象HTMLを60_live_gallery.htmlに修正
 // v1.0.0 - 初版作成
 
-var CACHE_NAME    = 'live-gallery-v4';
+var CACHE_NAME    = 'live-gallery-v5';
 var STATIC_ASSETS = [
   './',
   './60_live_gallery.html',
