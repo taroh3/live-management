@@ -459,7 +459,8 @@
     try {
       var url = GAS_URL + '?action=auth&password=' + encodeURIComponent(pw);
       var res  = await fetch(url, { redirect: 'follow' });
-      var data = await res.json();
+      var text = await res.text();
+      var data = JSON.parse(text.trim());
 
       if (!data.success) {
         throw new Error(data.error || 'パスワードが違います');
@@ -500,7 +501,8 @@
 
       var url  = GAS_URL + '?action=gallery_data&password=' + encodeURIComponent(state.password);
       var res  = await fetch(url, { redirect: 'follow' });
-      var data = await res.json();
+      var text2 = await res.text();
+      var data = JSON.parse(text2.trim());
 
       if (!data.success) throw new Error(data.error || 'データ取得失敗');
 
@@ -687,7 +689,7 @@
     var url = GAS_URL + '?action=gallery_setlist&liveId=' + encodeURIComponent(c.id) +
               '&password=' + encodeURIComponent(state.password);
     fetch(url, { redirect: 'follow' })
-      .then(function(r) { return r.json(); })
+      .then(function(r) { return r.text(); }).then(function(t) { return JSON.parse(t.trim()); })
       .then(function(data) {
         if (!data.success) throw new Error(data.error);
         state.setlistCache[c.id] = data.data;
