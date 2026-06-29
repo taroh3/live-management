@@ -399,7 +399,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-  const GAS_URL = 'YOUR_GAS_WEBAPP_URL_HERE';
+  const GAS_URL = 'https://script.google.com/macros/s/AKfycbz2uM0H3ONycJoMghmgp-aNP24nVkZD34cZYwIOx4U74ltxeWPLNZGreEDkDMjo1H0C/exec';
   const GITHUB_BASE = 'https://taroh3.github.io/live-management/';
 
   // ============================================================
@@ -458,7 +458,7 @@
 
     try {
       var url = GAS_URL + '?action=auth&password=' + encodeURIComponent(pw);
-      var res  = await fetch(url);
+      var res  = await fetch(url, { redirect: 'follow' });
       var data = await res.json();
 
       if (!data.success) {
@@ -499,7 +499,7 @@
       }
 
       var url  = GAS_URL + '?action=gallery_data&password=' + encodeURIComponent(state.password);
-      var res  = await fetch(url);
+      var res  = await fetch(url, { redirect: 'follow' });
       var data = await res.json();
 
       if (!data.success) throw new Error(data.error || 'データ取得失敗');
@@ -686,7 +686,7 @@
 
     var url = GAS_URL + '?action=gallery_setlist&liveId=' + encodeURIComponent(c.id) +
               '&password=' + encodeURIComponent(state.password);
-    fetch(url)
+    fetch(url, { redirect: 'follow' })
       .then(function(r) { return r.json(); })
       .then(function(data) {
         if (!data.success) throw new Error(data.error);
