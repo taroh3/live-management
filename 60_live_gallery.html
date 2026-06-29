@@ -401,6 +401,7 @@
 <script>
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbz2uM0H3ONycJoMghmgp-aNP24nVkZD34cZYwIOx4U74ltxeWPLNZGreEDkDMjo1H0C/exec';
   const GITHUB_BASE = 'https://taroh3.github.io/live-management/';
+  const DATA_VERSION = '2';  // データ構造変更時にインクリメント→古いキャッシュを自動破棄
 
   // ============================================================
   // 状態管理
@@ -430,6 +431,7 @@
   // 初期化
   // ============================================================
   window.addEventListener('load', function() {
+    purgeOldCache();
     var saved = localStorage.getItem('lg_password');
     if (saved) {
       state.password = saved;
@@ -866,6 +868,21 @@
   // ============================================================
   // ユーティリティ
   // ============================================================
+  function purgeOldCache() {
+    var stored = localStorage.getItem('lg_data_version');
+    if (stored === DATA_VERSION) return;
+    // バージョン不一致→lg_で始まる全キャッシュを破棄（パスワードは保持）
+    var savedPw = localStorage.getItem('lg_password');
+    var keys = [];
+    for (var i = 0; i < localStorage.length; i++) {
+      var k = localStorage.key(i);
+      if (k && k.indexOf('lg_') === 0 && k !== 'lg_password') keys.push(k);
+    }
+    keys.forEach(function(k) { localStorage.removeItem(k); });
+    localStorage.setItem('lg_data_version', DATA_VERSION);
+    if (savedPw) localStorage.setItem('lg_password', savedPw);
+  }
+
   function _findNearestIdx(concerts, dateStr) {
     if (!concerts || concerts.length === 0) return 0;
     var idx = concerts.findIndex(function(c) { return c.date >= dateStr; });
