@@ -330,6 +330,24 @@
       border: 1px solid var(--border);
     }
     .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+
+    /* ============ ライトボックス ============ */
+    .lightbox {
+      position: fixed; inset: 0; z-index: 4000;
+      background: rgba(0,0,0,0.95);
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0; pointer-events: none; transition: opacity 0.25s;
+    }
+    .lightbox.active { opacity: 1; pointer-events: all; }
+    .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .lightbox-ph {
+      display: flex; flex-direction: column; align-items: center; gap: 16px;
+    }
+    .lightbox-ph-icon { font-size: 80px; opacity: 0.4; }
+    .lightbox-ph-name {
+      font-size: 26px; font-weight: 800; color: var(--accent);
+      text-align: center; padding: 0 20px;
+    }
   </style>
 </head>
 <body>
@@ -399,10 +417,15 @@
 <!-- トースト -->
 <div class="toast" id="toast"></div>
 
+<!-- ライトボックス -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <div id="lightbox-content"></div>
+</div>
+
 <script>
   const GAS_URL = 'https://script.google.com/macros/s/AKfycbz2uM0H3ONycJoMghmgp-aNP24nVkZD34cZYwIOx4U74ltxeWPLNZGreEDkDMjo1H0C/exec';
   const GITHUB_BASE = 'https://taroh3.github.io/live-management/';
-  const DATA_VERSION = '3';  // データ構造変更時にインクリメント→古いキャッシュを自動破棄
+  const DATA_VERSION = '4';  // データ構造変更時にインクリメント→古いキャッシュを自動破棄
 
   // ============================================================
   // 状態管理
@@ -645,7 +668,7 @@
 
     return '' +
       '<div class="concert-card">' +
-        '<div class="artist-photo-area">' +
+        '<div class="artist-photo-area" data-idx="' + idx + '">' +
           photoHtml +
           '<div class="artist-photo-placeholder" ' + placeholderStyle + '>' +
             '<div class="placeholder-icon">🎤</div>' +
@@ -747,6 +770,11 @@
     if (x <= 20 || x >= window.innerWidth - 20) e.preventDefault();
   }, { passive: false });
 
+  // iOS長押しメニュー抑止
+  document.addEventListener('contextmenu', function(e) {
+    if (e.target.closest('.artist-photo-area')) e.preventDefault();
+  }, { passive: false });
+
   (function() {
     var swiper = document.getElementById('swiper');
     swiper.addEventListener('touchstart', function(e) {
@@ -758,11 +786,67 @@
       var dx = e.changedTouches[0].clientX - touchStartX;
       var dy = e.changedTouches[0].clientY - touchStartY;
       if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+        cancelLongPress();
+        closeLightbox();
         if (dx < 0) goTo(state.currentIdx + 1);
         else        goTo(state.currentIdx - 1);
       }
     }, { passive: true });
   })();
+
+  // ============================================================
+  // 長押し検知（写真エリア → ライトボックス）
+  // ============================================================
+  var longPressTimer = null;
+  var longPressStartX = 0, longPressStartY = 0;
+
+  document.addEventListener('touchstart', function(e) {
+    var area = e.target.closest('.artist-photo-area');
+    if (!area) return;
+    longPressStartX = e.touches[0].clientX;
+    longPressStartY = e.touches[0].clientY;
+    var idx = parseInt(area.getAttribute('data-idx'), 10);
+    longPressTimer = setTimeout(function() {
+      openLightbox(idx);
+    }, 500);
+  }, { passive: true });
+
+  document.addEventListener('touchmove', function(e) {
+    if (!longPressTimer) return;
+    var dx = Math.abs(e.touches[0].clientX - longPressStartX);
+    var dy = Math.abs(e.touches[0].clientY - longPressStartY);
+    if (dx > 10 || dy > 10) cancelLongPress();
+  }, { passive: true });
+
+  document.addEventListener('touchend', cancelLongPress, { passive: true });
+
+  function cancelLongPress() {
+    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  }
+
+  function openLightbox(idx) {
+    var c = state.filteredConcerts[idx];
+    if (!c) return;
+    var artist = state.artists[state.currentArtistIdx];
+    var content = document.getElementById('lightbox-content');
+
+    if (c.has_poster && c.poster_url) {
+      content.innerHTML = '<img src="' + esc(c.poster_url) + '" alt="ポスター">';
+    } else {
+      var artistImg = artist && artist.photo_url
+        ? (GITHUB_BASE + 'gallery_artist_' + artist.id.replace(/-/g, '') + '.jpg')
+        : '';
+      content.innerHTML = artistImg
+        ? '<img src="' + esc(artistImg) + '" alt="' + esc(artist.name) + '">'
+        : '<div class="lightbox-ph"><div class="lightbox-ph-icon">🎤</div>' +
+          '<div class="lightbox-ph-name">' + esc(artist ? artist.name : '') + '</div></div>';
+    }
+    document.getElementById('lightbox').classList.add('active');
+  }
+
+  function closeLightbox() {
+    document.getElementById('lightbox').classList.remove('active');
+  }
 
   function goTo(idx) {
     if (idx < 0 || idx >= state.filteredConcerts.length) return;
