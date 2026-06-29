@@ -1,9 +1,18 @@
-var CACHE_NAME    = 'live-gallery-v1';
+// 60_live_gallery_sw.js
+// たろうのLive Gallery Service Worker
+// v2.0.0
+//
+// 変更履歴：
+// v2.0.0 - キャッシュ名をv2に更新・対象HTMLを60_live_gallery.htmlに修正
+// v1.0.0 - 初版作成
+
+var CACHE_NAME    = 'live-gallery-v2';
 var STATIC_ASSETS = [
   './',
-  './live_gallery.html',
+  './60_live_gallery.html',
 ];
 
+// インストール
 self.addEventListener('install', function(e) {
   e.waitUntil(
     caches.open(CACHE_NAME).then(function(cache) {
@@ -13,21 +22,24 @@ self.addEventListener('install', function(e) {
   self.skipWaiting();
 });
 
+// アクティベート
 self.addEventListener('activate', function(e) {
   e.waitUntil(
     caches.keys().then(function(keys) {
       return Promise.all(
         keys.filter(function(k) { return k !== CACHE_NAME; })
-            .map(function(k)   { return caches.delete(k); })
+            .map(function(k) { return caches.delete(k); })
       );
     })
   );
   self.clients.claim();
 });
 
+// フェッチ
 self.addEventListener('fetch', function(e) {
   var url = new URL(e.request.url);
 
+  // GAS WebApp APIリクエストは常にネットワークから取得（キャッシュしない）
   if (url.pathname.includes('/macros/s/') || url.searchParams.has('action')) {
     e.respondWith(
       fetch(e.request).catch(function() {
@@ -40,6 +52,7 @@ self.addEventListener('fetch', function(e) {
     return;
   }
 
+  // 静的ファイルはキャッシュファースト
   e.respondWith(
     caches.match(e.request).then(function(cached) {
       if (cached) return cached;
