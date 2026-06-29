@@ -635,7 +635,8 @@
       : '';
     var placeholderStyle = imgUrl ? 'style="display:none"' : '';
 
-    var photoLinkHtml = c.photo_url
+    var isShared = c.photo_url && c.photo_url.indexOf('photos.app.goo.gl') >= 0;
+    var photoLinkHtml = isShared
       ? '<a class="photo-link-btn" href="' + esc(c.photo_url) + '" target="_blank" rel="noopener">📷 ライブ写真を見る</a>'
       : '<span class="no-photo-label">写真なし</span>';
 
@@ -673,26 +674,29 @@
     var c = state.filteredConcerts[idx];
     if (!c) return;
 
-    if (state.setlistCache[c.id]) {
-      renderSetlist(idx, state.setlistCache[c.id]);
+    var cacheKey = c.id + '_' + c.artist_id;
+
+    if (state.setlistCache[cacheKey]) {
+      renderSetlist(idx, state.setlistCache[cacheKey]);
       return;
     }
 
-    var lsKey    = 'lg_setlist_' + c.id;
+    var lsKey    = 'lg_setlist_' + cacheKey;
     var lsCached = localStorage.getItem(lsKey);
     if (lsCached) {
-      state.setlistCache[c.id] = JSON.parse(lsCached);
-      renderSetlist(idx, state.setlistCache[c.id]);
+      state.setlistCache[cacheKey] = JSON.parse(lsCached);
+      renderSetlist(idx, state.setlistCache[cacheKey]);
       return;
     }
 
     var url = GAS_URL + '?action=gallery_setlist&liveId=' + encodeURIComponent(c.id) +
+              '&artistId=' + encodeURIComponent(c.artist_id) +
               '&password=' + encodeURIComponent(state.password);
     fetch(url, { redirect: 'follow' })
       .then(function(r) { return r.text(); }).then(function(t) { return JSON.parse(t.trim()); })
       .then(function(data) {
         if (!data.success) throw new Error(data.error);
-        state.setlistCache[c.id] = data.data;
+        state.setlistCache[cacheKey] = data.data;
         try { localStorage.setItem(lsKey, JSON.stringify(data.data)); } catch(e) {}
         renderSetlist(idx, data.data);
       })
