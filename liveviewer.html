@@ -160,6 +160,17 @@
       padding: 10px 16px;
     }
     .concert-date   { font-size: 24px; color: var(--text-sub); margin-bottom: 2px; }
+    .concert-date-row {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 2px;
+    }
+    .concert-photo-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      background: var(--accent-dim); border: 1px solid var(--accent);
+      border-radius: 8px; padding: 5px 10px;
+      font-size: 11px; font-weight: 700; color: var(--accent);
+      text-decoration: none; white-space: nowrap; flex-shrink: 0;
+    }
     .concert-artist { font-size: 28px; font-weight: 800; color: var(--text); margin-bottom: 2px; }
     .concert-venue  { font-size: 17px; color: var(--accent); }
 
@@ -900,7 +911,10 @@
           ${futureBadge}
         </div>
         <div class="concert-info">
-          <div class="concert-date">${esc(c.date_label)}${esc(dayNight)}</div>
+          <div class="concert-date-row">
+            <div class="concert-date">${esc(c.date_label)}${esc(dayNight)}</div>
+            ${c.photo_url ? `<a class="concert-photo-btn" href="${esc(c.photo_url)}" target="_blank" rel="noopener noreferrer">📷 写真</a>` : ''}
+          </div>
           <div class="concert-artist">${esc(artistLabel)}</div>
           <div class="concert-venue">${esc(venueLabel)}</div>
         </div>
