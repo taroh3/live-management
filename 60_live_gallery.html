@@ -668,7 +668,7 @@
 
     var isShared = c.photo_url && c.photo_url.indexOf('photos.app.goo.gl') >= 0;
     var photoLinkHtml = isShared
-      ? '<a class="photo-link-btn" href="' + esc(c.photo_url) + '" target="_blank" rel="noopener">📷 ライブ写真を見る</a>'
+      ? '<a class="photo-link-btn" href="' + esc(c.photo_url) + '" target="_blank" rel="noopener noreferrer">📷 ライブ写真を見る</a>'
       : '<span class="no-photo-label">写真なし</span>';
 
     return '' +
