@@ -8,7 +8,7 @@
  * v1.0.0 - 初版作成
  */
 
-var CACHE_NAME    = 'liveviewer-v6';
+var CACHE_NAME    = 'liveviewer-v7';
 var STATIC_ASSETS = [
   './',
   './liveviewer006.html',
