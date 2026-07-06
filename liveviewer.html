@@ -2656,8 +2656,10 @@
     showToast('⏳ セトリを更新中...', { persistent: true });
     
     try {
-      // ① GAS APIからセトリ再取得（apiGet を使用）
-      const data = await apiGet('setlist', { liveId });
+      // ① GAS APIからセトリ再取得
+      //    force=1: サーバー側キャッシュを強制クリアして再取得
+      //    _t:      apiGetのメモリキャッシュもバイパス（毎回必ず最新を取得）
+      const data = await apiGet('setlist', { liveId, force: '1', _t: Date.now() });
       
       // ② localStorage に全セトリを保存（仕様書 9.5.1）
       localStorage.setItem(`lv_setlist_${liveId}`, JSON.stringify(data));
