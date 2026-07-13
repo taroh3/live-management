@@ -706,6 +706,7 @@
     setlistCache:       {},
     artistImages:       {},
     editMode:           false,
+    _storageWarned:     false,
   };
 
   // ============================================================
@@ -832,11 +833,11 @@
       const artistYears = artistsResp.years   || [];
       const artistStats = artistsResp.stats   || {};
 
-      localStorage.setItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
-      localStorage.setItem('lv_artists', JSON.stringify(artists));
-      localStorage.setItem('lv_artist_years', JSON.stringify(artistYears));
-      localStorage.setItem('lv_artist_stats', JSON.stringify(artistStats));
-      localStorage.setItem('lv_years',   JSON.stringify(years));
+      _lvSafeSetItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
+      _lvSafeSetItem('lv_artists', JSON.stringify(artists));
+      _lvSafeSetItem('lv_artist_years', JSON.stringify(artistYears));
+      _lvSafeSetItem('lv_artist_stats', JSON.stringify(artistStats));
+      _lvSafeSetItem('lv_years',   JSON.stringify(years));
 
       state.concertsByYear[state.currentFilterYear] = concerts;
       state.concerts     = concerts;
@@ -1196,7 +1197,7 @@
         try {
           const data = await apiGet('concerts', { year: value });
           state.concertsByYear[value] = data;
-          localStorage.setItem('lv_concerts_' + value, JSON.stringify(data));
+          _lvSafeSetItem('lv_concerts_' + value, JSON.stringify(data));
         } catch(e) {
           showToast('❌ データ取得失敗: ' + e.message);
           return;
@@ -1821,7 +1822,7 @@
       const res = await apiGet('concerts', { year });
       state.concertsByYear[year] = res;
       state.concerts = res;
-      if (year) localStorage.setItem('lv_concerts_' + year, JSON.stringify(res));
+      if (year) _lvSafeSetItem('lv_concerts_' + year, JSON.stringify(res));
 
       // filteredConcertsを更新（フィルター条件を維持）
       state.filteredConcerts = filterConcerts(state.concerts);
@@ -2308,7 +2309,7 @@
     try {
       const data = await apiGet('concerts', { year: year });
       state.concertsByYear[year] = data;
-      localStorage.setItem('lv_concerts_' + year, JSON.stringify(data));
+      _lvSafeSetItem('lv_concerts_' + year, JSON.stringify(data));
       return data;
     } catch(e) {
       return [];
@@ -2530,10 +2531,10 @@
       const artistYears = artistsResp.years   || [];
       const artistStats = artistsResp.stats   || {};
 
-      localStorage.setItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
-      localStorage.setItem('lv_artists', JSON.stringify(artists));
-      localStorage.setItem('lv_artist_years', JSON.stringify(artistYears));
-      localStorage.setItem('lv_artist_stats', JSON.stringify(artistStats));
+      _lvSafeSetItem('lv_concerts_' + state.currentFilterYear, JSON.stringify(concerts));
+      _lvSafeSetItem('lv_artists', JSON.stringify(artists));
+      _lvSafeSetItem('lv_artist_years', JSON.stringify(artistYears));
+      _lvSafeSetItem('lv_artist_stats', JSON.stringify(artistStats));
 
       state.concertsByYear[state.currentFilterYear] = concerts;
       state.concerts     = concerts;
@@ -2586,7 +2587,7 @@
     try {
       const data = await apiGet('artist_images');
       state.artistImages = data;
-      localStorage.setItem(lsKey, JSON.stringify(data));
+      _lvSafeSetItem(lsKey, JSON.stringify(data));
       console.log('✅ アーティスト画像: APIから取得・保存 ' + Object.keys(data).length + '件');
     } catch(e) {
       console.warn('アーティスト画像取得失敗: ' + e.message);
@@ -2650,6 +2651,25 @@
   }
 
   // ============================================================
+  // localStorage 安全書き込み（Phase 1）
+  //   保存に失敗しても例外を投げず起動・動作を継続させる。
+  //   失敗時はセッション中1回だけトーストで通知する。
+  // ============================================================
+  function _lvSafeSetItem(key, value) {
+    try {
+      localStorage.setItem(key, value);
+      return true;
+    } catch(e) {
+      console.warn('⚠️ localStorage書き込み失敗: ' + key + ' (' + e.name + ': ' + e.message + ')');
+      if (!state._storageWarned) {
+        state._storageWarned = true;
+        showToast('⚠️ 端末のキャッシュ保存に失敗しました（動作には影響ありません）');
+      }
+      return false;
+    }
+  }
+
+  // ============================================================
   // セトリ限定更新（Ver1.8新規）
   // ============================================================
   async function refreshSetlistData(liveId) {
@@ -2661,16 +2681,16 @@
       //    _t:      apiGetのメモリキャッシュもバイパス（毎回必ず最新を取得）
       const data = await apiGet('setlist', { liveId, force: '1', _t: Date.now() });
       
-      // ② localStorage に全セトリを保存（仕様書 9.5.1）
-      localStorage.setItem(`lv_setlist_${liveId}`, JSON.stringify(data));
+      // ② localStorage に全セトリを保存（仕様書 10.5.1）
+      _lvSafeSetItem(`lv_setlist_${liveId}`, JSON.stringify(data));
       
-      // ③ メモリキャッシュに保存（仕様書 9.5.1）
+      // ③ メモリキャッシュに保存（仕様書 10.5.1）
       state.setlistCache[liveId] = data;
       
-      // ④ セトリ統計キャッシュをクリア（仕様書 9.5.1）
+      // ④ セトリ統計キャッシュをクリア（仕様書 10.5.1）
       state.statsData = null;
       
-      // ⑤ 現在のセトリを再描画（仕様書 9.5.2）
+      // ⑤ 現在のセトリを再描画（仕様書 10.5.2）
       renderSetlist(state.currentIdx, data);
       
       // ⑥ 完了メッセージ表示
