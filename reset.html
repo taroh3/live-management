@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LiveViewer 復旧ページ</title>
+<style>
+  body { font-family: -apple-system, "Hiragino Kaku Gothic ProN", sans-serif;
+         background: #111; color: #eee; margin: 0; padding: 24px; line-height: 1.7; }
+  h1 { font-size: 20px; color: #4caf7d; margin: 0 0 12px; }
+  p  { font-size: 14px; }
+  .warn { background: #2a2320; border: 1px solid #6b5a2b; border-radius: 8px;
+          padding: 12px; font-size: 14px; color: #ffe9c2; margin-top: 12px; }
+  button { padding: 14px 18px; border: none; border-radius: 10px; font-size: 16px;
+           font-weight: 700; cursor: pointer; margin-top: 16px; width: 100%; }
+  .danger { background: #c0483b; color: #fff; }
+  .go     { background: #4caf7d; color: #fff; }
+  #log { margin-top: 16px; font-size: 14px; }
+  #log div { padding: 4px 0; }
+  .ok { color: #7bd88f; }
+  .ng { color: #ff8a80; }
+  .guide { margin-top: 28px; font-size: 13px; color: #bbb;
+           border-top: 1px solid #333; padding-top: 16px; }
+  .guide b { color: #ddd; }
+  a { color: #4caf7d; }
+  ol { padding-left: 20px; margin: 8px 0; }
+</style>
+</head>
+<body>
+  <h1>🔧 LiveViewer 復旧ページ</h1>
+  <p>アプリが起動しない、または「The quota has been exceeded」などのエラーが出るとき、この端末に保存された一時データ（キャッシュ）を消して復旧します。</p>
+
+  <div class="warn">
+    ⚠️ この操作で、同じ端末に保存された <b>Live Gallery のデータ（保存済みパスワードを含む）</b> も一緒に削除されます。<br>
+    ※ Notion 側の本当の記録（公演・セットリスト等）は削除されません。
+  </div>
+
+  <button class="danger" id="run">この端末のキャッシュを消して復旧する</button>
+  <div id="log"></div>
+
+  <div class="guide">
+    <b>これで直らない場合</b>
+    <ol>
+      <li>iPhone を再起動する</li>
+      <li>予備URL（Cloudflare Pages・設定後にここへ記入）で開く</li>
+      <li>iOS のアップデートを確認する</li>
+      <li>設定 → Safari →「履歴とWebサイトデータを消去」（全サイトからログアウトされます）</li>
+    </ol>
+    <b>「Load failed」と表示される場合</b>（別原因＝サーバーの認可切れ）<br>
+    GAS の URL（…/exec?action=years）を開き、「REVIEW PERMISSIONS」→ アカウント選択 → 詳細 → 移動 → 許可 の順で再認可してください（仕様書 9.5.7）。
+  </div>
+
+  <script>
+    var logEl = document.getElementById('log');
+    function log(msg, ok) {
+      var d = document.createElement('div');
+      d.className = ok ? 'ok' : 'ng';
+      d.textContent = (ok ? '✅ ' : '❌ ') + msg;
+      logEl.appendChild(d);
+    }
+    document.getElementById('run').addEventListener('click', async function() {
+      if (!confirm('端末のキャッシュ（Live Galleryのデータ・保存パスワード含む）を削除します。よろしいですか？')) return;
+      this.disabled = true;
+      logEl.innerHTML = '';
+      try { localStorage.clear(); log('localStorage を削除しました', true); }
+      catch(e) { log('localStorage 削除失敗: ' + e.name, false); }
+      try { sessionStorage.clear(); log('sessionStorage を削除しました', true); }
+      catch(e) { log('sessionStorage 削除失敗: ' + e.name, false); }
+      try {
+        if (navigator.serviceWorker) {
+          var regs = await navigator.serviceWorker.getRegistrations();
+          for (var i = 0; i < regs.length; i++) { await regs[i].unregister(); }
+          log('Service Worker を解除しました（' + regs.length + '件）', true);
+        } else { log('Service Worker は対象外', true); }
+      } catch(e) { log('Service Worker 解除失敗: ' + e.name, false); }
+      try {
+        if (window.caches) {
+          var keys = await caches.keys();
+          for (var j = 0; j < keys.length; j++) { await caches.delete(keys[j]); }
+          log('キャッシュを削除しました（' + keys.length + '件）', true);
+        } else { log('Cache API は対象外', true); }
+      } catch(e) { log('キャッシュ削除失敗: ' + e.name, false); }
+      try {
+        if (window.indexedDB && indexedDB.databases) {
+          var dbs = await indexedDB.databases();
+          for (var k = 0; k < dbs.length; k++) { if (dbs[k].name) indexedDB.deleteDatabase(dbs[k].name); }
+          log('IndexedDB を削除しました（' + dbs.length + '件）', true);
+        }
+      } catch(e) { /* 対応ブラウザのみ・無視 */ }
+
+      var go = document.createElement('button');
+      go.className = 'go';
+      go.textContent = '▶ LiveViewer を開く';
+      go.onclick = function() { location.href = 'liveviewer.html'; };
+      logEl.appendChild(go);
+    });
+  </script>
+</body>
+</html>
