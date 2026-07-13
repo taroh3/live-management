@@ -1,17 +1,19 @@
 /**
  * liveviewer_sw.js
  * ライブビューワー Service Worker
- * Ver 1.1.0
+ * Ver 1.2.0
  *
  * 変更履歴：
+ * v1.2.0 - Phase 1: キャッシュ名をv8に更新／STATIC_ASSETSの旧ファイル名(liveviewer006.html)を是正／
+ *          HTML本体をネットワーク優先＋オフライン時キャッシュフォールバックに変更
  * v1.1.0 - GAS APIリクエストをキャッシュしないように変更
  * v1.0.0 - 初版作成
  */
 
-var CACHE_NAME    = 'liveviewer-v7';
+var CACHE_NAME    = 'liveviewer-v8';
 var STATIC_ASSETS = [
   './',
-  './liveviewer006.html',
+  './liveviewer.html',
 ];
 
 // インストール
@@ -54,7 +56,27 @@ self.addEventListener('fetch', function(e) {
     return;
   }
 
-  // 静的ファイルはキャッシュファースト
+  // HTML本体（ナビゲーション／.html）はネットワーク優先＋オフライン時キャッシュフォールバック
+  // （CACHE_NAME更新忘れでHTML更新が恒久的に反映されない構造を解消）
+  var isHtml = e.request.mode === 'navigate' ||
+               url.pathname === '/' ||
+               url.pathname.endsWith('.html');
+  if (isHtml) {
+    e.respondWith(
+      fetch(e.request).then(function(res) {
+        var clone = res.clone();
+        caches.open(CACHE_NAME).then(function(cache) { cache.put(e.request, clone); });
+        return res;
+      }).catch(function() {
+        return caches.match(e.request).then(function(cached) {
+          return cached || caches.match('./liveviewer.html');
+        });
+      })
+    );
+    return;
+  }
+
+  // その他の静的ファイルはキャッシュファースト
   e.respondWith(
     caches.match(e.request).then(function(cached) {
       if (cached) return cached;
