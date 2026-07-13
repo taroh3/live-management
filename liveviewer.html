@@ -497,6 +497,8 @@
     .tab-icon { font-size: 22px; }
     .tab-label { font-size: 10px; color: var(--text-dim); }
     .tab-item.active .tab-label { color: var(--accent); }
+    .tab-icon.syncing { animation: lvspin 1s linear infinite; }
+    @keyframes lvspin { to { transform: rotate(360deg); } }
 
     /* ============ ローディング ============ */
     .loading {
@@ -678,7 +680,7 @@
       <div class="tab-label">統計</div>
     </div>
     <div class="tab-item" onclick="doSync()">
-      <div class="tab-icon">🔄</div>
+      <div class="tab-icon" id="sync-icon">🔄</div>
       <div class="tab-label">更新</div>
     </div>
   </div>
@@ -713,6 +715,7 @@
     artistImages:       {},
     editMode:           false,
     _storageWarned:     false,
+    _syncing:           false,
   };
 
   // ============================================================
@@ -1197,15 +1200,18 @@
       state.filters.year      = value;
       state.currentFilterYear = value;
 
-      // 未取得の年はAPIから取得
+      // 未取得の年は3段階（メモリ→localStorage→API）で取得
       if (!state.concertsByYear[value]) {
-        showToast('⏳ ' + value + '年のデータを取得中...');
-        try {
-          const data = await apiGet('concerts', { year: value });
-          state.concertsByYear[value] = data;
-          _lvSafeSetItem('lv_concerts_' + value, JSON.stringify(data));
-        } catch(e) {
-          showToast('❌ データ取得失敗: ' + e.message);
+        showToast('⏳ ' + value + '年のデータを取得中...', { persistent: true });
+        await _ensureYearConcerts(value);
+        hideToast();
+        if (!state.concertsByYear[value]) {
+          // 取得失敗（_ensureYearConcertsは失敗時メモリに入らない）→ その場で再試行できるようにする
+          showToast('❌ ' + value + '年のデータ取得に失敗しました', {
+            persistent: true,
+            action:     '🔁 再試行',
+            onAction:   function() { applyFilter('year', value, el); }
+          });
           return;
         }
       }
@@ -1748,6 +1754,7 @@
       });
       closeModal();
       showToast('✅ 保存しました');
+      state.statsData = null; // 修正後は統計を取り直す（課題⑤）
       if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
     } catch(e) { showToast('❌ 保存失敗: ' + e.message); }
   }
@@ -1818,6 +1825,7 @@
       await apiPost('edit_concert', body);
       closeModal();
       showToast('✅ 保存しました');
+      state.statsData = null; // 修正後は統計を取り直す（課題⑤）
 
       // 該当年のキャッシュのみクリア
       clearApiCache();
@@ -2163,6 +2171,7 @@
       exitEditSetlist();
       // セットリストを再読み込み
       loadSetlist(state.currentIdx);
+      state.statsData = null; // 修正後は統計を取り直す（課題⑤）
       showToast('✅ 保存しました');
     } catch(e) {
       showToast('❌ 保存失敗: ' + e.message);
@@ -2311,7 +2320,18 @@
   }
 
   async function _ensureYearConcerts(year) {
+    // ① メモリ
     if (state.concertsByYear[year]) return state.concertsByYear[year];
+    // ② localStorage（前回取得分を再利用。ヒット時はメモリにも復元する）
+    try {
+      const cached = localStorage.getItem('lv_concerts_' + year);
+      if (cached) {
+        const data = JSON.parse(cached);
+        state.concertsByYear[year] = data;
+        return data;
+      }
+    } catch(e) {}
+    // ③ GAS API
     try {
       const data = await apiGet('concerts', { year: year });
       state.concertsByYear[year] = data;
@@ -2326,11 +2346,16 @@
     const years = (state.years && state.years.length > 0)
       ? state.years
       : Object.keys(state.concertsByYear);
-    const all = [];
-    for (const y of years) {
-      const data = await _ensureYearConcerts(y);
-      all.push(...data);
+    // Notion API 429対策として、同時取得は最大3本に制限しつつ並列化する
+    const CONCURRENCY = 3;
+    const byYear = {};
+    for (let i = 0; i < years.length; i += CONCURRENCY) {
+      const batch = years.slice(i, i + CONCURRENCY);
+      const datas = await Promise.all(batch.map(y => _ensureYearConcerts(y)));
+      batch.forEach((y, j) => { byYear[y] = datas[j] || []; });
     }
+    const all = [];
+    years.forEach(y => { all.push(...(byYear[y] || [])); });
     all.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     return all;
   }
@@ -2343,17 +2368,23 @@
 
     switchTab('concerts');
 
-    // 演者一覧のタブ状態を公演一覧に引き継ぐ
-    if (artistTab === 'all') {
-      // すべて → 全年のそのアーティストの公演
-      state.concerts          = await _ensureAllYearsConcerts();
-      state.currentFilterYear = 'all';
-      state.filters = { artist: artist.name, year: null, prefecture: null };
-    } else {
-      // 年指定 → その年のそのアーティストの公演
-      state.concerts          = await _ensureYearConcerts(artistTab);
-      state.currentFilterYear = artistTab;
-      state.filters = { artist: artist.name, year: artistTab, prefecture: null };
+    // 取得に時間がかかる場合、古い一覧が「絞り込み結果」に見えないよう明示する
+    showToast('⏳ 公演データを取得中...', { persistent: true });
+    try {
+      // 演者一覧のタブ状態を公演一覧に引き継ぐ
+      if (artistTab === 'all') {
+        // すべて → 全年のそのアーティストの公演
+        state.concerts          = await _ensureAllYearsConcerts();
+        state.currentFilterYear = 'all';
+        state.filters = { artist: artist.name, year: null, prefecture: null };
+      } else {
+        // 年指定 → その年のそのアーティストの公演
+        state.concerts          = await _ensureYearConcerts(artistTab);
+        state.currentFilterYear = artistTab;
+        state.filters = { artist: artist.name, year: artistTab, prefecture: null };
+      }
+    } finally {
+      hideToast();
     }
 
     state.selectedArtist = artist.name;
@@ -2519,6 +2550,12 @@
   // 更新
   // ============================================================
   async function doSync() {
+    if (state._syncing) { showToast('更新中です'); return; }
+    state._syncing = true;
+    const syncIcon = document.getElementById('sync-icon');
+    if (syncIcon) syncIcon.classList.add('syncing');
+    showToast('🔄 更新中...', { persistent: true });
+    let imagesOk = true;
     try {
       // GAS側キャッシュクリア
       await fetch(GAS_URL + '?action=clear_cache').catch(() => {});
@@ -2528,6 +2565,7 @@
       Object.keys(localStorage)
         .filter(k => k.startsWith('lv_concerts_'))
         .forEach(k => localStorage.removeItem(k));
+      showToast('🔄 公演データを取得中...', { persistent: true });
       const [concerts, artistsResp] = await Promise.all([
         apiGet('concerts', { year: state.currentFilterYear }),
         apiGet('artists_v2'),
@@ -2556,7 +2594,8 @@
       // アーティスト画像のlocalStorageキャッシュをクリアして再取得
       localStorage.removeItem('lv_artist_images');
       state.artistImages = {};
-      await _loadArtistImages();
+      showToast('🔄 画像を取得中...', { persistent: true });
+      imagesOk = await _loadArtistImages();
 
       const now = new Date();
       state.syncTime = `${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -2567,9 +2606,12 @@
       renderArtists();
       goTo(state.currentIdx);
 
-      showToast('✅ 更新しました');
+      showToast(imagesOk ? '✅ 更新しました' : '✅ 更新しました（画像の取得は失敗）');
     } catch(e) {
       showToast('❌ 更新失敗: ' + e.message);
+    } finally {
+      state._syncing = false;
+      if (syncIcon) syncIcon.classList.remove('syncing');
     }
   }
 
@@ -2580,14 +2622,15 @@
   // アーティストデフォルト画像をBase64でlocalStorageに永続保存
   // ============================================================
   async function _loadArtistImages() {
-    const lsKey  = 'lv_artist_images';
-    const cached = localStorage.getItem(lsKey);
-
-    if (cached) {
-      state.artistImages = JSON.parse(cached);
-      console.log('✅ アーティスト画像: localStorageから取得 ' + Object.keys(state.artistImages).length + '件');
-      return;
-    }
+    const lsKey = 'lv_artist_images';
+    try {
+      const cached = localStorage.getItem(lsKey);
+      if (cached) {
+        state.artistImages = JSON.parse(cached);
+        console.log('✅ アーティスト画像: localStorageから取得 ' + Object.keys(state.artistImages).length + '件');
+        return true;
+      }
+    } catch(e) {}
 
     // localStorageになければAPIから取得
     try {
@@ -2595,9 +2638,11 @@
       state.artistImages = data;
       _lvSafeSetItem(lsKey, JSON.stringify(data));
       console.log('✅ アーティスト画像: APIから取得・保存 ' + Object.keys(data).length + '件');
+      return true;
     } catch(e) {
       console.warn('アーティスト画像取得失敗: ' + e.message);
       state.artistImages = {};
+      return false;
     }
   }
 
@@ -2648,12 +2693,29 @@
   function showToast(msg, options = {}) {
     const t = document.getElementById('toast');
     t.textContent = msg;
+
+    // options.action があれば、その場で再実行できるボタンを付ける（課題④ 再試行導線）
+    if (options.action && typeof options.onAction === 'function') {
+      const btn = document.createElement('span');
+      btn.textContent = options.action;
+      btn.style.marginLeft     = '10px';
+      btn.style.textDecoration = 'underline';
+      btn.style.fontWeight     = '700';
+      btn.style.cursor         = 'pointer';
+      btn.onclick = function() { t.classList.remove('show'); options.onAction(); };
+      t.appendChild(btn);
+    }
+
     t.classList.add('show');
-    
+
     // persistent: true の場合は自動消去しない
     if (!options.persistent) {
       setTimeout(() => t.classList.remove('show'), 2500);
     }
+  }
+
+  function hideToast() {
+    document.getElementById('toast').classList.remove('show');
   }
 
   // ============================================================
