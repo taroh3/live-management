@@ -1,16 +1,18 @@
 /**
  * liveviewer_sw.js
  * ライブビューワー Service Worker
- * Ver 1.2.0
+ * Ver 1.3.0
  *
  * 変更履歴：
+ * v1.3.0 - Phase 1仕上げ: 障害復旧機構（修復ボタン・reset.html等）の追加に伴うHTML改訂のため
+ *          キャッシュ名をv9に更新
  * v1.2.0 - Phase 1: キャッシュ名をv8に更新／STATIC_ASSETSの旧ファイル名(liveviewer006.html)を是正／
  *          HTML本体をネットワーク優先＋オフライン時キャッシュフォールバックに変更
  * v1.1.0 - GAS APIリクエストをキャッシュしないように変更
  * v1.0.0 - 初版作成
  */
 
-var CACHE_NAME    = 'liveviewer-v8';
+var CACHE_NAME    = 'liveviewer-v9';
 var STATIC_ASSETS = [
   './',
   './liveviewer.html',
