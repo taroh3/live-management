@@ -134,6 +134,7 @@
       background: var(--bg-card);
     }
     .poster-area img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; }
+    .poster-artist-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: 50% 10%; }
     .poster-placeholder {
       width: 100%; height: 100%;
       display: flex; flex-direction: column;
@@ -712,10 +713,10 @@
     isOffline:          false,
     syncTime:           '',
     setlistCache:       {},
-    artistImages:       {},
     editMode:           false,
     _storageWarned:     false,
     _syncing:           false,
+    _pendingTarget:     null,
   };
 
   // ============================================================
@@ -813,7 +814,6 @@
         state.concertsByYear[thisYear] = JSON.parse(lsConcerts);
         state.concerts                 = JSON.parse(lsConcerts);
 
-        await _loadArtistImages();
         renderConcerts();
         renderFilters();
         renderArtists();
@@ -854,8 +854,6 @@
       state.artistYears  = artistYears;
       state.artistStats  = artistStats;
 
-      document.getElementById('loading-msg').textContent = 'アーティスト画像取得中...';
-      await _loadArtistImages();
       state.syncTime = new Date().toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
       document.getElementById('sync-time').textContent = '最終同期: ' + state.syncTime;
 
@@ -896,18 +894,25 @@
   }
 
   function buildConcertCard(c, idx) {
-    // ポスター写真 → デフォルト画像（Base64・永続）→ プレースホルダーの優先順位
-    const artistId      = c.artists.length > 0 ? c.artists[0].id : '';
-    const defaultImgB64 = artistId && state.artistImages[artistId]
-      ? state.artistImages[artistId].base64 : '';
-    const posterHtml = c.has_poster && c.poster_url
-      ? `<img src="${c.poster_url}" alt="ポスター" loading="lazy">`
-      : defaultImgB64
-        ? `<img src="${defaultImgB64}" alt="${esc(c.artists.map(a => a.name).join(' / '))}" loading="lazy">`
-        : `<div class="poster-placeholder">
+    // ポスター写真 → デフォルト画像（GitHub Pages）→ プレースホルダーの優先順位
+    const artistId = c.artists.length > 0 ? c.artists[0].id : '';
+    const artNames = esc(c.artists.map(a => a.name).join(' / '));
+    const phHtml = `<div class="poster-placeholder">
              <div class="poster-placeholder-icon">🎸</div>
-             <div class="poster-placeholder-name">${esc(c.artists.map(a => a.name).join(' / '))}</div>
+             <div class="poster-placeholder-name">${artNames}</div>
            </div>`;
+    let posterHtml;
+    if (c.has_poster && c.poster_url) {
+      posterHtml = `<img src="${c.poster_url}" alt="ポスター" loading="lazy">`;
+    } else if (artistId) {
+      // 演者画像はGitHub Pagesを直接参照。画像が無い演者は404になるので、
+      // onerrorで画像を隠して下地のプレースホルダーを見せる
+      const url = 'https://taroh3.github.io/live-management/live_artist_' + artistId.replace(/-/g, '') + '.jpg';
+      posterHtml = phHtml +
+        `<img class="poster-artist-img" src="${url}" alt="${artNames}" loading="lazy" onerror="this.style.display='none'">`;
+    } else {
+      posterHtml = phHtml;
+    }
 
     const futureBadge = c.is_future ? `<div class="future-badge">📅 予定</div>` : '';
     const artistLabel = c.artists.map(a => a.name).join(' / ');
@@ -956,6 +961,7 @@
     if (lsCached) {
       const parsed = JSON.parse(lsCached);
       state.setlistCache[c.id] = parsed;
+      _lvTouchSetlistCache(c.id, false);
       renderSetlist(idx, parsed);
       return; // キャッシュから即表示して終了
     }
@@ -971,6 +977,7 @@
       // ③ メモリ・localStorageの両方に保存
       state.setlistCache[c.id] = data;
       try { localStorage.setItem(lsKey, JSON.stringify(data)); } catch(e) {}
+      _lvTouchSetlistCache(c.id, true);
       renderSetlist(idx, data);
 
     } catch(e) {
@@ -1156,7 +1163,7 @@
   }, { passive: true });
 
   swiper.addEventListener('touchend', e => {
-    if (state.editMode) return; // 編集モード中はスワイプ無効
+    if (state.editMode || _isModalOpen()) return; // 編集モード中・モーダル表示中はスワイプ無効
     const dx = e.changedTouches[0].clientX - touchStartX;
     const dy = e.changedTouches[0].clientY - touchStartY;
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
@@ -1265,19 +1272,23 @@
     const lb  = document.getElementById('lightbox');
     const cnt = document.getElementById('lb-content');
 
-    const artistId2     = c.artists.length > 0 ? c.artists[0].id : '';
-    const defaultImgLb  = artistId2 && state.artistImages[artistId2]
-      ? state.artistImages[artistId2].base64 : '';
-    if (c.has_poster && c.poster_url) {
-      cnt.innerHTML = `<img src="${c.poster_url}" alt="ポスター">`;
-    } else if (defaultImgLb) {
-      cnt.innerHTML = `<img src="${defaultImgLb}" alt="${esc(c.artists.map(a => a.name).join(' / '))}">`;
-    } else {
-      cnt.innerHTML = `
+    const artistId2 = c.artists.length > 0 ? c.artists[0].id : '';
+    const names2    = esc(c.artists.map(a => a.name).join(' / '));
+    const lbPh = `
         <div class="lightbox-ph">
           <div class="lightbox-ph-icon">🎸</div>
-          <div class="lightbox-ph-name">${esc(c.artists.map(a => a.name).join(' / '))}</div>
+          <div class="lightbox-ph-name">${names2}</div>
         </div>`;
+    if (c.has_poster && c.poster_url) {
+      cnt.innerHTML = `<img src="${c.poster_url}" alt="ポスター">`;
+    } else if (artistId2) {
+      // 演者画像はGitHub Pagesを直接参照。無い場合(404)はプレースホルダーへ差し替える
+      const url = 'https://taroh3.github.io/live-management/live_artist_' + artistId2.replace(/-/g, '') + '.jpg';
+      cnt.innerHTML = `<img src="${url}" alt="${names2}">`;
+      const lbImg = cnt.querySelector('img');
+      if (lbImg) lbImg.onerror = function() { cnt.innerHTML = lbPh; };
+    } else {
+      cnt.innerHTML = lbPh;
     }
 
     lb.classList.add('active');
@@ -1334,6 +1345,7 @@
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
+    _lvSetPendingTarget(); // バグ⑤: この時点で対象公演を確定
 
     document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">ポスター写真</div>
@@ -1363,8 +1375,11 @@
     const previews = files.map(f =>
       `<img src="${URL.createObjectURL(f)}" class="preview-img" alt="プレビュー">`
     ).join('');
+    const t    = state._pendingTarget;
+    const dest = t ? `<div style="font-size:12px;color:var(--text-sub);text-align:center;margin:6px 0;">保存先: ${esc(t.dateLabel)}${t.venue ? ' / ' + esc(t.venue) : ''}</div>` : '';
     document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">ポスター写真を追加</div>
+      ${dest}
       <div class="preview-grid">${previews}</div>
       <div class="preview-count">${files.length}枚選択中</div>
       <div class="edit-btn-group">
@@ -1377,19 +1392,20 @@
   }
 
   async function uploadPosterFiles() {
-    const c     = state.filteredConcerts[state.currentIdx];
+    const t     = state._pendingTarget;
     const files = state._pendingPosterFiles || [];
-    if (!files.length || !c) return;
+    if (!files.length || !t) return;
     closeModal();
+    const year  = t.year || String(new Date().getFullYear());
     let successCount = 0;
     for (let i = 0; i < files.length; i++) {
       try {
         showToast(`📤 送信中 ${i+1}/${files.length}...`);
         const b64 = await fileToBase64(files[i]);
         await apiPost('lv_upload_poster', {
-          liveId: c.id, imageBase64: b64,
+          liveId: t.liveId, imageBase64: b64,
           fileName: files[i].name, mimeType: files[i].type || 'image/jpeg',
-          year: c.date ? c.date.slice(0,4) : String(new Date().getFullYear()),
+          year: year,
         });
         successCount++;
         await new Promise(r => setTimeout(r, 500));
@@ -1397,7 +1413,6 @@
     }
     if (successCount > 0) {
       showToast(`✅ ${successCount}枚のポスター写真を追加しました`);
-      const year = c.date ? c.date.slice(0,4) : String(new Date().getFullYear());
       delete state.concertsByYear[year];
       localStorage.removeItem('lv_concerts_' + year);
     }
@@ -1411,6 +1426,7 @@
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
     if (!navigator.onLine) { showToast('オフライン中は修正できません'); return; }
+    _lvSetPendingTarget(); // バグ⑤: この時点で対象公演を確定
 
     const setlistData   = state.setlistCache[c.id];
     const setlists      = setlistData ? (setlistData.setlists || []) : [];
@@ -1495,8 +1511,11 @@
     const previews = files.map(f =>
       `<img src="${URL.createObjectURL(f)}" class="preview-img" alt="プレビュー">`
     ).join('');
+    const t    = state._pendingTarget;
+    const dest = t ? `<div style="font-size:12px;color:var(--text-sub);text-align:center;margin:6px 0;">保存先: ${esc(t.dateLabel)}${t.venue ? ' / ' + esc(t.venue) : ''}</div>` : '';
     document.getElementById('modal-body').innerHTML = `
       <div class="modal-section-title">📸 セトリ写真アップ</div>
+      ${dest}
       <div class="preview-grid">${previews}</div>
       <div class="preview-count">${files.length}枚選択中</div>
       <div class="edit-btn-group">
@@ -1511,11 +1530,11 @@
   }
 
   async function uploadSetlistImageFiles() {
-    const c         = state.filteredConcerts[state.currentIdx];
+    const t         = state._pendingTarget;
     const files     = state._pendingSetlistImageFiles || [];
     const setlistId = state._pendingSetlistImageSetlistId;
     const artistId  = state._pendingSetlistImageArtistId;
-    if (!files.length) return;
+    if (!files.length || !t) return;
     closeModal();
     let successCount = 0;
     for (let i = 0; i < files.length; i++) {
@@ -1523,7 +1542,7 @@
         showToast(`📤 送信中 ${i+1}/${files.length}...`);
         const b64 = await fileToBase64(files[i]);
         await apiPost('lv_upload_setlist_image', {
-          liveId: c ? c.id : null, setlistId: setlistId || null,
+          liveId: t.liveId, setlistId: setlistId || null,
           artistId: artistId || null,
           imageBase64: b64, fileName: files[i].name, mimeType: files[i].type || 'image/jpeg',
         });
@@ -1533,7 +1552,7 @@
     }
     if (successCount > 0) {
       showToast(`✅ ${successCount}枚のセトリ写真をアップしました`);
-      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); }
+      delete state.setlistCache[t.liveId]; localStorage.removeItem('lv_setlist_' + t.liveId);
     }
     state._pendingSetlistImageFiles     = null;
     state._pendingSetlistImageSetlistId = null;
@@ -1559,20 +1578,21 @@
   }
 
   async function saveSetlistNote(setlistId, artistId) {
-    const c    = state.filteredConcerts[state.currentIdx];
+    const t    = state._pendingTarget;
     const text = document.getElementById('note-input')?.value?.trim() || '';
     if (!text) { showToast('テキストを入力してください'); return; }
+    if (!t) return;
     try {
       closeModal();
       showToast('💾 保存中...');
       await apiPost('lv_upload_setlist_note', {
-        liveId:    c ? c.id : null,
+        liveId:    t.liveId,
         setlistId: setlistId || null,
         artistId:  artistId  || null,
         text,
       });
       showToast('✅ セトリ補足を保存しました');
-      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); }
+      delete state.setlistCache[t.liveId]; localStorage.removeItem('lv_setlist_' + t.liveId);
     } catch(e) { showToast('❌ 保存失敗: ' + e.message); }
   }
 
@@ -1621,11 +1641,11 @@
 
         if (result && result.is_complete) {
           clearInterval(_pollingTimer); _pollingTimer = null;
-          const c = state.filteredConcerts[state.currentIdx];
-          if (c) {
-            delete state.setlistCache[c.id];
-            localStorage.removeItem('lv_setlist_' + c.id);
-            await loadSetlist(state.currentIdx);
+          if (liveId) {
+            delete state.setlistCache[liveId];
+            localStorage.removeItem('lv_setlist_' + liveId);
+            const cur = state.filteredConcerts[state.currentIdx];
+            if (cur && cur.id === liveId) await loadSetlist(state.currentIdx);
           }
           showToast('✅ 解析完了！セトリを確認してください。');
         }
@@ -1648,17 +1668,17 @@
   }
 
   async function deleteSetlistSongs(setlistId) {
-    const c = state.filteredConcerts[state.currentIdx];
+    const t = state._pendingTarget;
+    if (!t) return;
     try {
       closeModal();
       showToast('🗑️ 削除中...');
-      await apiPost('lv_delete_setlist', { liveId: c ? c.id : null, setlistId });
+      await apiPost('lv_delete_setlist', { liveId: t.liveId, setlistId });
       showToast('✅ セトリを削除しました');
-      if (c) {
-        delete state.setlistCache[c.id];
-        localStorage.removeItem('lv_setlist_' + c.id);
-        await loadSetlist(state.currentIdx);
-      }
+      delete state.setlistCache[t.liveId];
+      localStorage.removeItem('lv_setlist_' + t.liveId);
+      const cur = state.filteredConcerts[state.currentIdx];
+      if (cur && cur.id === t.liveId) await loadSetlist(state.currentIdx);
     } catch(e) { showToast('❌ 削除失敗: ' + e.message); }
   }
 
@@ -1691,18 +1711,17 @@
       showToast('✅ 確認済みにしています...');
       await apiPost('lv_approve_song', { liveId, setlistId, songId, songName: newName });
       showToast('✅ 確認済みにしました');
-      const c = state.filteredConcerts[state.currentIdx];
-      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
+      if (liveId) { delete state.setlistCache[liveId]; localStorage.removeItem('lv_setlist_' + liveId); const cur = state.filteredConcerts[state.currentIdx]; if (cur && cur.id === liveId) await loadSetlist(state.currentIdx); }
     } catch(e) { showToast('❌ 失敗: ' + e.message); }
   }
 
   async function approveAll(setlistId, liveId) {
-    const c = state.filteredConcerts[state.currentIdx];
+    const lid = liveId || (state._pendingTarget ? state._pendingTarget.liveId : null);
     try {
       showToast('✅ 全件確認済みにしています...');
-      await apiPost('lv_approve_all', { liveId: liveId || (c ? c.id : null), setlistId });
+      await apiPost('lv_approve_all', { liveId: lid, setlistId });
       showToast('✅ 全件確認済みにしました');
-      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
+      if (lid) { delete state.setlistCache[lid]; localStorage.removeItem('lv_setlist_' + lid); const cur = state.filteredConcerts[state.currentIdx]; if (cur && cur.id === lid) await loadSetlist(state.currentIdx); }
     } catch(e) { showToast('❌ 失敗: ' + e.message); }
   }
 
@@ -1721,6 +1740,7 @@
   // （編集モード内のopenSongEditとは別・セトリキャッシュをクリアして再描画）
   // ============================================================
   function openSongEditModal(songId, songName, encoreCount) {
+    _lvSetPendingTarget(); // バグ⑤: 曲タップ時点で対象公演を確定
     document.getElementById('modal-body').innerHTML = `
       <div class="modal-title">✏️ 曲を編集</div>
       <div class="modal-item">
@@ -1743,31 +1763,38 @@
   }
 
   async function saveSongEditModal(songId) {
-    const c        = state.filteredConcerts[state.currentIdx];
+    const t        = state._pendingTarget;
     const songName = document.getElementById('song-modal-name')?.value?.trim();
     const encore   = parseInt(document.getElementById('song-modal-encore')?.value || '0', 10);
     if (!songName) { showToast('曲名を入力してください'); return; }
+    if (!t) return;
     try {
       await apiPost('edit_setlist', {
-        edit_type: 'edit_song', liveId: c ? c.id : null,
+        edit_type: 'edit_song', liveId: t.liveId,
         setlistId: null, song_id: songId, song_name: songName, encore_count: encore,
       });
       closeModal();
       showToast('✅ 保存しました');
       state.statsData = null; // 修正後は統計を取り直す（課題⑤）
-      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
+      delete state.setlistCache[t.liveId]; localStorage.removeItem('lv_setlist_' + t.liveId);
+      const cur = state.filteredConcerts[state.currentIdx];
+      if (cur && cur.id === t.liveId) await loadSetlist(state.currentIdx);
     } catch(e) { showToast('❌ 保存失敗: ' + e.message); }
   }
 
   async function deleteSongModal(songId) {
-    const c = state.filteredConcerts[state.currentIdx];
+    const t = state._pendingTarget;
+    if (!t) return;
     try {
       await apiPost('edit_setlist', {
-        edit_type: 'delete_song', liveId: c ? c.id : null, setlistId: null, song_id: songId,
+        edit_type: 'delete_song', liveId: t.liveId, setlistId: null, song_id: songId,
       });
       closeModal();
       showToast('🗑️ 削除しました');
-      if (c) { delete state.setlistCache[c.id]; localStorage.removeItem('lv_setlist_' + c.id); await loadSetlist(state.currentIdx); }
+      state.statsData = null; // 修正後は統計を取り直す（課題⑤）
+      delete state.setlistCache[t.liveId]; localStorage.removeItem('lv_setlist_' + t.liveId);
+      const cur = state.filteredConcerts[state.currentIdx];
+      if (cur && cur.id === t.liveId) await loadSetlist(state.currentIdx);
     } catch(e) { showToast('❌ 削除失敗: ' + e.message); }
   }
 
@@ -1776,6 +1803,7 @@
   function openEditConcert() {
     const c = state.filteredConcerts[state.currentIdx];
     if (!c) return;
+    _lvSetPendingTarget(); // バグ⑤: この時点で対象公演を確定
 
     const artistLabel  = c.artists.map(a => a.name).join(' / ');
     const venueLabel   = c.venue ? c.venue.name : '（未登録）';
@@ -1812,10 +1840,11 @@
 
   // 【Ver1.4】保存後は該当年のキャッシュのみクリア・再取得して現在のカードを再描画
   async function saveEditConcert() {
-    const c    = state.filteredConcerts[state.currentIdx];
-    const year = c.date ? c.date.slice(0, 4) : '';
+    const t    = state._pendingTarget;
+    if (!t) return;
+    const year = t.year;
     const body = {
-      liveId: c.id,
+      liveId: t.liveId,
       year:   year,
       format: document.getElementById('edit-format').value,
       memo:   document.getElementById('edit-memo').value,
@@ -2195,6 +2224,23 @@
     editSetlistState.paneEl       = null;
   }
 
+  // 【バグ⑤】書き込み対象を「操作開始時」に確定し、送信時に表示中カードから再解決しない
+  function _lvSetPendingTarget(extra) {
+    const c = state.filteredConcerts[state.currentIdx];
+    if (!c) { state._pendingTarget = null; return null; }
+    state._pendingTarget = Object.assign({
+      liveId:    c.id,
+      year:      c.date ? c.date.slice(0, 4) : '',
+      dateLabel: c.date_label || '',
+      venue:     c.venue ? c.venue.name : ''
+    }, extra || {});
+    return state._pendingTarget;
+  }
+  function _isModalOpen() {
+    const m = document.getElementById('modal-overlay');
+    return !!(m && m.classList.contains('active'));
+  }
+
   function openModal() {
     document.getElementById('modal-overlay').classList.add('active');
   }
@@ -2555,7 +2601,6 @@
     const syncIcon = document.getElementById('sync-icon');
     if (syncIcon) syncIcon.classList.add('syncing');
     showToast('🔄 更新中...', { persistent: true });
-    let imagesOk = true;
     try {
       // GAS側キャッシュクリア
       await fetch(GAS_URL + '?action=clear_cache').catch(() => {});
@@ -2591,11 +2636,8 @@
       Object.keys(localStorage)
         .filter(k => k.startsWith('lv_setlist_'))
         .forEach(k => localStorage.removeItem(k));
-      // アーティスト画像のlocalStorageキャッシュをクリアして再取得
+      // アーティスト画像は GitHub Pages を直接参照するため、残存キャッシュのみ掃除する
       localStorage.removeItem('lv_artist_images');
-      state.artistImages = {};
-      showToast('🔄 画像を取得中...', { persistent: true });
-      imagesOk = await _loadArtistImages();
 
       const now = new Date();
       state.syncTime = `${now.getMonth()+1}/${now.getDate()} ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}`;
@@ -2606,7 +2648,7 @@
       renderArtists();
       goTo(state.currentIdx);
 
-      showToast(imagesOk ? '✅ 更新しました' : '✅ 更新しました（画像の取得は失敗）');
+      showToast('✅ 更新しました');
     } catch(e) {
       showToast('❌ 更新失敗: ' + e.message);
     } finally {
@@ -2618,33 +2660,6 @@
   // ============================================================
   // トースト
   // ============================================================
-  // ============================================================
-  // アーティストデフォルト画像をBase64でlocalStorageに永続保存
-  // ============================================================
-  async function _loadArtistImages() {
-    const lsKey = 'lv_artist_images';
-    try {
-      const cached = localStorage.getItem(lsKey);
-      if (cached) {
-        state.artistImages = JSON.parse(cached);
-        console.log('✅ アーティスト画像: localStorageから取得 ' + Object.keys(state.artistImages).length + '件');
-        return true;
-      }
-    } catch(e) {}
-
-    // localStorageになければAPIから取得
-    try {
-      const data = await apiGet('artist_images');
-      state.artistImages = data;
-      _lvSafeSetItem(lsKey, JSON.stringify(data));
-      console.log('✅ アーティスト画像: APIから取得・保存 ' + Object.keys(data).length + '件');
-      return true;
-    } catch(e) {
-      console.warn('アーティスト画像取得失敗: ' + e.message);
-      state.artistImages = {};
-      return false;
-    }
-  }
 
   // ============================================================
   // 本日に最も近い公演のインデックスを返す（昇順配列前提）
@@ -2716,6 +2731,58 @@
 
   function hideToast() {
     document.getElementById('toast').classList.remove('show');
+  }
+
+  // ============================================================
+  // セトリキャッシュ LRU上限（Phase 2／仕様書9.4.5.3）
+  //   セトリキャッシュ(lv_setlist_*)が無制限に肥大するのを防ぐ。
+  //   合計が上限(2MB)を超えたら、最終アクセスが古い順に削除する。
+  //   lv_setlist_meta に { liveId: 最終アクセス日時 } を保持して判定する。
+  // ============================================================
+  const LV_SETLIST_CACHE_LIMIT = 2 * 1024 * 1024; // 2MB
+
+  // セトリの読み込み・保存時に最終アクセス日時を記録する。
+  // enforce=true（＝保存時）のときだけ上限チェック・削除を実行する。
+  function _lvTouchSetlistCache(liveId, enforce) {
+    let meta = {};
+    try {
+      const raw = localStorage.getItem('lv_setlist_meta');
+      if (raw) meta = JSON.parse(raw);
+    } catch(e) { meta = {}; }
+    meta[liveId] = new Date().toISOString();
+    _lvSafeSetItem('lv_setlist_meta', JSON.stringify(meta));
+    if (enforce) _lvEnforceSetlistCacheLimit();
+  }
+
+  function _lvEnforceSetlistCacheLimit() {
+    try {
+      // lv_setlist_meta を除くセトリキャッシュの合計サイズを算出
+      const keys = Object.keys(localStorage).filter(k =>
+        k.indexOf('lv_setlist_') === 0 && k !== 'lv_setlist_meta');
+      let total = 0;
+      keys.forEach(k => { const v = localStorage.getItem(k); total += v ? v.length : 0; });
+      if (total <= LV_SETLIST_CACHE_LIMIT) return;
+
+      let meta = {};
+      try { meta = JSON.parse(localStorage.getItem('lv_setlist_meta') || '{}'); } catch(e) {}
+
+      // 最終アクセスが古い順に並べ、上限以下になるまで削除
+      const items = keys.map(k => ({
+        key:    k,
+        liveId: k.slice('lv_setlist_'.length),
+        t:      meta[k.slice('lv_setlist_'.length)] || ''
+      }));
+      items.sort((a, b) => (a.t || '').localeCompare(b.t || ''));
+
+      for (const it of items) {
+        if (total <= LV_SETLIST_CACHE_LIMIT) break;
+        const v = localStorage.getItem(it.key);
+        try { localStorage.removeItem(it.key); } catch(e) {}
+        total -= v ? v.length : 0;
+        delete meta[it.liveId];
+      }
+      _lvSafeSetItem('lv_setlist_meta', JSON.stringify(meta));
+    } catch(e) {}
   }
 
   // ============================================================
@@ -2828,6 +2895,7 @@
       
       // ② localStorage に全セトリを保存（仕様書 10.5.1）
       _lvSafeSetItem(`lv_setlist_${liveId}`, JSON.stringify(data));
+      _lvTouchSetlistCache(liveId, true);
       
       // ③ メモリキャッシュに保存（仕様書 10.5.1）
       state.setlistCache[liveId] = data;
