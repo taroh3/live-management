@@ -763,13 +763,39 @@
       if (!navigator.onLine) {
         state.isOffline = true;
         document.getElementById('offline-bar').classList.add('show');
-        const cached = localStorage.getItem('lv_' + action);
-        if (cached) return JSON.parse(cached);
+        // 【バグ⑬】保存キーは 'lv_'+action ではなくaction毎に形が違うため、正しく対応付けて復元する
+        const fb = _lvOfflineFallback(action, params);
+        if (fb !== null) return fb;
       }
       throw e;
     } finally {
       apiFetching[cacheKey] = false;
     }
+  }
+
+  // 【バグ⑬】オフライン時のlocalStorageフォールバック（保存形式に合わせて復元）
+  function _lvOfflineFallback(action, params) {
+    try {
+      if (action === 'concerts') {
+        const y   = (params && params.year) ? params.year : String(new Date().getFullYear());
+        const raw = localStorage.getItem('lv_concerts_' + y);
+        return raw ? JSON.parse(raw) : null;
+      }
+      if (action === 'artists_v2') {
+        const a = localStorage.getItem('lv_artists');
+        if (!a) return null;
+        return {
+          artists: JSON.parse(a),
+          years:   JSON.parse(localStorage.getItem('lv_artist_years') || '[]'),
+          stats:   JSON.parse(localStorage.getItem('lv_artist_stats') || '{}')
+        };
+      }
+      if (action === 'years') {
+        const raw = localStorage.getItem('lv_years');
+        return raw ? JSON.parse(raw) : null;
+      }
+    } catch(e) {}
+    return null;
   }
 
   // メモリキャッシュをクリア（更新ボタン・修正後に使用）
@@ -1023,7 +1049,9 @@
           <div class="no-setlist">セットリストなし</div>
         `;
       } else {
-        el.innerHTML = '<div class="no-setlist">セットリストなし</div>';
+        // 【バグ③】1バンド公演でセトリ未取得のとき、タップで再読み込みできる導線を出す
+        el.innerHTML = `<div class="no-setlist">セットリストなし<br>
+          <span style="color:var(--accent);cursor:pointer;text-decoration:underline;font-size:13px;" onclick="_lvReloadSetlist(${idx})">🔄 タップで再読み込み</span></div>`;
       }
       return;
     }
@@ -1058,8 +1086,19 @@
     el.innerHTML = buildSongList(setlists[0].songs, setlists[0].id, c ? c.id : '');
   }
 
+  // 【バグ③】「セットリストなし」からの再読み込み（ローカルキャッシュを消してから再取得）
+  function _lvReloadSetlist(idx) {
+    const c = state.filteredConcerts[idx];
+    if (c) {
+      delete state.setlistCache[c.id];
+      try { localStorage.removeItem('lv_setlist_' + c.id); } catch(e) {}
+    }
+    loadSetlist(idx);
+  }
+
   // セトリ未入力時のアーティストタブ切り替え（「セットリストなし」表示のまま）
   function switchArtistTab(el) {
+    if (state.editMode) return; // 【バグ①同梱】編集中はアーティストタブ切替を無効化
     const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
     tabs.forEach(t => t.classList.remove('active'));
     el.classList.add('active');
@@ -1067,6 +1106,7 @@
 
   // 複数アーティストでセトリが一部入力の場合のタブ切り替え
   function switchArtistTabPane(cardIdx, tabIdx, el) {
+    if (state.editMode) return; // 【バグ①同梱】編集中はアーティストタブ切替を無効化
     const tabs = el.closest('.artist-tabs').querySelectorAll('.artist-tab');
     tabs.forEach(t => t.classList.remove('active'));
     el.classList.add('active');
@@ -1257,6 +1297,7 @@
 
   function filterConcerts(concerts) {
     return concerts.filter(c => {
+      if (c.status === 'キャンセル') return false; // 【バグ⑦】キャンセル公演は一覧に出さない
       if (state.filters.year && (!c.date || !c.date.startsWith(state.filters.year))) return false;
       if (state.filters.prefecture && c.prefecture !== state.filters.prefecture) return false;
       if (state.filters.artist && !c.artists.some(a => a.name === state.filters.artist)) return false;
@@ -1489,6 +1530,11 @@
     if (setlists && setlists.length === 1) {
       return { ...setlists[0], artistId: setlists[0].artist_id || null };
     }
+    // 【バグ③】タブなし＆セトリ0件でも、1アーティスト公演ならその演者IDを返して①②③を有効化する
+    const c = state.filteredConcerts[state.currentIdx];
+    if (c && c.artists && c.artists.length === 1) {
+      return { id: null, artistId: c.artists[0].id };
+    }
     return { id: null, artistId: null };
   }
 
@@ -1599,6 +1645,26 @@
   // セトリ解析実行
   async function startSetlistAnalysis(setlistId, artistId, liveId) {
     closeModal();
+
+    // 対象セトリの現状（曲数・写真有無）を把握する
+    const cacheData = state.setlistCache[liveId];
+    const sls = cacheData ? (cacheData.setlists || []) : [];
+    const sl  = setlistId ? sls.find(s => s.id === setlistId) : (sls.length === 1 ? sls[0] : null);
+    const songCount = (sl && sl.songs) ? sl.songs.length : 0;
+    const hasPhoto  = sl ? !!sl.has_photo : false;
+
+    // 【再解析整理②】写真なし＆既存曲あり → 補足だけの「全消し再解析」で本物のセトリが消えるため中止
+    if (!hasPhoto && songCount > 0) {
+      showToast('⚠️ 写真がないため、③解析すると既存の曲が消えます。補足で既存を直す場合は③解析は使えません。');
+      return;
+    }
+
+    // 【バグ④】既存曲がある場合は事前確認（全消し→再解析になる旨を明示）
+    if (songCount > 0) {
+      const ok = window.confirm('登録済みの' + songCount + '曲を削除して再解析します（確認済み状態も消えます）。よろしいですか？');
+      if (!ok) return;
+    }
+
     try {
       showToast('🔍 解析を開始します...');
       await apiPost('lv_analyze', {
@@ -1906,18 +1972,25 @@
       return;
     }
 
-    // 対バンは現在表示中のセットリストペインを特定
     const idx      = state.currentIdx;
     const setlists = cached.setlists;
-    let   activeSlIdx = 0;
 
+    // タブ位置番号は「編集ペインの特定」にのみ使う（ペインはタブと同順で生成される）
+    let activeSlIdx = 0;
     if (setlists.length > 1) {
-      // アクティブなタブのインデックスを取得
       const tabs = document.querySelectorAll(`#setlist-${idx} .artist-tab`);
       tabs.forEach((t, i) => { if (t.classList.contains('active')) activeSlIdx = i; });
     }
 
-    const sl    = setlists[activeSlIdx];
+    // 【バグ①】編集対象セトリは位置番号ではなく、アクティブタブのdata属性で正しく引き当てる
+    // （setlists配列の並びはタブ順と無関係なため、位置番号での引き当ては別バンドを掴み得る）
+    const active = _getActiveSetlist(c.id, setlists);
+    if (!active || !active.id) {
+      showToast('このアーティストのセトリは未登録です');
+      return;
+    }
+    const sl = setlists.find(s => s.id === active.id) || active;
+
     const paneId = setlists.length > 1
       ? `pane-${idx}-${activeSlIdx}`
       : `setlist-${idx}`;
@@ -1986,9 +2059,10 @@
 
     html += `
       <button class="edit-add-btn" onclick="openAddSong()">＋ 曲を追加</button>
+      <div style="font-size:12px;color:var(--text-sub);line-height:1.5;margin:8px 4px;">ⓘ 曲の編集・追加・削除は即時保存されます。↑↓の並び替えは「並び順を保存」で確定してください。</div>
       <div class="edit-action-buttons">
-        <button class="modal-save-btn" onclick="saveSetlistOrder()">保存する</button>
-        <button class="modal-cancel-btn" onclick="cancelEditSetlist()">キャンセル</button>
+        <button class="modal-save-btn" onclick="saveSetlistOrder()">並び順を保存</button>
+        <button class="modal-cancel-btn" onclick="cancelEditSetlist()">閉じる</button>
       </div>
     </div>`;
 
@@ -2070,6 +2144,8 @@
       s.is_encore    = encore > 0;
       closeModal();
       renumberTracks();
+      // 【バグ⑭】区分変更で再採番された曲順を、その場でNotionへ自動追送（保存し忘れ対策）
+      await _lvPersistTrackChanges();
       renderEditSetlist();
 
       // 【修正】セットリストキャッシュをクリア（編集モードを抜けた後に古い表示が残る不具合対策）
@@ -2096,6 +2172,8 @@
       // ローカル配列から除去
       editSetlistState.songs.splice(idx, 1);
       renumberTracks();
+      // 【バグ⑭】削除で繰り上がった曲順をその場でNotionへ自動追送
+      await _lvPersistTrackChanges();
       if (fromModal) closeModal();
       renderEditSetlist();
       showToast('🗑️ 削除しました');
@@ -2164,6 +2242,8 @@
 
       closeModal();
       renumberTracks();
+      // 【バグ⑭】追加による採番変化をその場でNotionへ自動追送
+      await _lvPersistTrackChanges();
       renderEditSetlist();
       showToast('✅ 追加しました');
 
@@ -2175,23 +2255,29 @@
     }
   }
 
+  // 【バグ⑭】再採番でtrackが変わった曲をNotionへ自動追送する（差分のみ）。
+  // 曲の編集・削除・追加の直後に呼び、区分変更や削除による採番ズレの「保存し忘れ」を防ぐ。
+  async function _lvPersistTrackChanges() {
+    const songs = editSetlistState.songs;
+    const changed = songs
+      .filter(s => s.track !== s.original_track)
+      .filter(s => !String(s.id).startsWith('temp_')) // 楽曲マスタ未登録の仮IDはスキップ
+      .map(s => ({ song_id: s.id, track: s.track, original_track: s.original_track }));
+    if (changed.length === 0) return;
+    await apiPost('edit_setlist', {
+      edit_type: 'reorder_songs',
+      liveId:    editSetlistState.liveId,
+      setlistId: editSetlistState.setlistId,
+      songs:     changed,
+    });
+    // 追送済みなので基準（original_track）を現在値に更新（次の差分で二重送信しない）
+    songs.forEach(s => { s.original_track = s.track; });
+  }
+
   // 並び替えを保存（差分のみ送信）
   async function saveSetlistOrder() {
-    const songs       = editSetlistState.songs;
-    const changedSongs = songs
-      .filter(s => s.track !== s.original_track)
-      .filter(s => !String(s.id).startsWith('temp_')) // 【保険】temp_IDはスキップ
-      .map(s => ({ song_id: s.id, track: s.track, original_track: s.original_track }));
-
     try {
-      if (changedSongs.length > 0) {
-        await apiPost('edit_setlist', {
-          edit_type: 'reorder_songs',
-          liveId:    editSetlistState.liveId,
-          setlistId: editSetlistState.setlistId,
-          songs:     changedSongs,
-        });
-      }
+      await _lvPersistTrackChanges();
 
       // キャッシュクリア
       if (state.setlistCache) delete state.setlistCache[editSetlistState.liveId];
@@ -2201,7 +2287,7 @@
       // セットリストを再読み込み
       loadSetlist(state.currentIdx);
       state.statsData = null; // 修正後は統計を取り直す（課題⑤）
-      showToast('✅ 保存しました');
+      showToast('✅ 並び順を保存しました');
     } catch(e) {
       showToast('❌ 保存失敗: ' + e.message);
     }
