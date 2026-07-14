@@ -234,7 +234,7 @@
 
     /* ============ 演者一覧 ============ */
     .artist-year-tabs {
-      display: flex; gap: 8px; padding: 10px 16px;
+      display: flex; gap: 8px; padding: 4px 16px;
       overflow-x: auto; white-space: nowrap;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
@@ -267,8 +267,8 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.35);
     }
     .ac-header {
-      display: flex; flex-direction: column; gap: 6px;
-      padding: 8px 16px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      display: flex; flex-direction: column; gap: 0;
+      padding: 3px 16px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
     .ac-top { display: flex; align-items: center; gap: 8px; }
     .ac-back {
@@ -279,9 +279,9 @@
       display: flex; gap: 8px; overflow-x: auto; white-space: nowrap; flex: 1; min-width: 0;
     }
     .ac-year-tabs::-webkit-scrollbar { display: none; }
-    .ac-title { font-size: 28px; font-weight: 800; color: var(--text);
+    .ac-title { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.15; margin-top: 4px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ac-stat  { font-size: 16px; color: var(--text-sub); text-align: right; }
+    .ac-stat  { font-size: 16px; color: var(--text-sub); text-align: right; line-height: 1; }
     .ac-stat-num { font-size: 24px; font-weight: 800; color: var(--text); }
     .ac-list  { overflow-y: auto; flex: 1; }
     .ac-row {
@@ -295,7 +295,7 @@
     .ac-sub   { font-size: 14px; color: var(--text-sub); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .artist-item {
       display: flex; align-items: center; gap: 14px;
-      padding: 12px 0; border-bottom: 1px solid var(--border);
+      padding: 9px 0; border-bottom: 1px solid var(--border);
       cursor: pointer;
     }
     .artist-item:last-child { border-bottom: none; }
@@ -2638,8 +2638,8 @@
       const venue = c.venue ? c.venue.name : '';
       const co    = (c.artists || []).filter(a => a.name !== artist.name).map(a => a.name);
       const parts = [];
-      if (co.length > 0)      parts.push(co.join('＆'));  // 【⑥】対バンでも「対バン」の文字は出さず共演者名のみ
-      else if (c.format)      parts.push(c.format);       // 単独等は形式
+      if (co.length > 0)      parts.push(co.join('＆'));                 // 共演者名のみ
+      else if (c.format && c.format !== '対バン') parts.push(c.format);  // 【③】形式（「対バン」の文字は出さない）
       if (c.performance_name) parts.push(c.performance_name);
       const sub = parts.join('・');
       const fut   = c.is_future ? ' future' : '';
