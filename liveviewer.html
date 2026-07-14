@@ -174,6 +174,11 @@
     }
     .concert-artist { font-size: 28px; font-weight: 800; color: var(--text); margin-bottom: 2px; }
     .concert-venue  { font-size: 17px; color: var(--accent); }
+    .concert-perf-name {
+      font-size: 14px; color: var(--text-sub); margin-top: 2px; cursor: pointer;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .concert-perf-name.expanded { white-space: normal; }
 
     .artist-tabs {
       display: flex;
@@ -251,6 +256,36 @@
     .artist-stat-num   { font-size: 30px; font-weight: 800; color: var(--text); }
     .artist-stat-sep   { font-size: 24px; color: var(--text-sub); }
     .artist-list { overflow-y: auto; flex: 1; padding: 12px 16px; }
+
+    /* ============ 演者別公演一覧（中間一覧・Ver2.8） ============ */
+    #page-concerts { position: relative; }
+    .back-to-list-btn {
+      position: absolute; top: 8px; left: 8px; z-index: 50;
+      background: var(--accent); color: #fff; border: none; border-radius: 20px;
+      padding: 6px 14px; font-size: 13px; font-weight: 700; cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+    }
+    .ac-header {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .ac-back {
+      background: none; border: none; color: var(--accent);
+      font-size: 24px; font-weight: 800; cursor: pointer; padding: 0 4px; flex-shrink: 0;
+    }
+    .ac-title { font-size: 20px; font-weight: 800; color: var(--text); flex: 1; min-width: 0;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .ac-stat  { font-size: 13px; color: var(--text-sub); flex-shrink: 0; }
+    .ac-list  { overflow-y: auto; flex: 1; }
+    .ac-row {
+      display: flex; align-items: baseline; gap: 8px;
+      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      cursor: pointer; white-space: nowrap; overflow: hidden;
+    }
+    .ac-row.future { background: var(--bg-future); }
+    .ac-date  { font-size: 14px; color: var(--text); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .ac-venue { font-size: 14px; color: var(--accent); flex-shrink: 0; }
+    .ac-sub   { font-size: 13px; color: var(--text-sub); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .artist-item {
       display: flex; align-items: center; gap: 14px;
       padding: 12px 0; border-bottom: 1px solid var(--border);
@@ -620,6 +655,7 @@
 
   <!-- 公演一覧ページ -->
   <div class="page active" id="page-concerts">
+    <button class="back-to-list-btn" id="back-to-list-btn" onclick="_lvBackToArtistList()" style="display:none;">← 一覧に戻る</button>
     <div class="swiper-outer" id="swiper">
       <div class="swiper-track" id="track"></div>
     </div>
@@ -630,6 +666,16 @@
     <div class="artist-year-tabs" id="artist-year-tabs"></div>
     <div class="artist-stat-bar" id="artist-stat-bar"></div>
     <div class="artist-list" id="artist-list"></div>
+  </div>
+
+  <!-- 演者別公演一覧（中間一覧・Ver2.8） -->
+  <div class="page" id="page-artist-concerts">
+    <div class="ac-header">
+      <button class="ac-back" onclick="hideArtistConcertList()">←</button>
+      <div class="ac-title" id="ac-title"></div>
+      <div class="ac-stat" id="ac-stat"></div>
+    </div>
+    <div class="ac-list" id="ac-list"></div>
   </div>
 
   <!-- 統計ページ -->
@@ -717,6 +763,8 @@
     _storageWarned:     false,
     _syncing:           false,
     _pendingTarget:     null,
+    cameFromArtistList: false,
+    _acArtistId:        null,
   };
 
   // ============================================================
@@ -953,11 +1001,12 @@
         </div>
         <div class="concert-info">
           <div class="concert-date-row">
-            <div class="concert-date">${esc(c.date_label)}${esc(dayNight)}</div>
+            <div class="concert-date">${esc(c.date_label)}${esc(dayNight)}${c.format ? '　' + esc(c.format) : ''}</div>
             ${c.photo_url ? `<a class="concert-photo-btn" href="${esc(c.photo_url)}" target="_blank" rel="noopener noreferrer">📷 写真</a>` : ''}
           </div>
           <div class="concert-artist">${esc(artistLabel)}</div>
           <div class="concert-venue">${esc(venueLabel)}</div>
+          ${c.performance_name ? `<div class="concert-perf-name" onclick="event.stopPropagation(); this.classList.toggle('expanded')">${esc(c.performance_name)}</div>` : ''}
         </div>
         <div class="setlist-area" id="setlist-${idx}">
           <div class="no-setlist">セットリスト読み込み中...</div>
@@ -1874,8 +1923,6 @@
     const artistLabel  = c.artists.map(a => a.name).join(' / ');
     const venueLabel   = c.venue ? c.venue.name : '（未登録）';
     const dayNight     = c.day_night ? `　${c.day_night}` : '';
-    const perfName     = c.performance_name
-      ? `<div class="modal-perf-name">${esc(c.performance_name)}</div>` : '';
 
     const formatOptions = ['', 'ワンマン', '対バン', 'フェス等', 'その他', '未確認']
       .map(v => `<option value="${v}" ${c.format === v ? 'selected' : ''}>${v || 'なし'}</option>`)
@@ -1887,12 +1934,15 @@
         <div class="modal-display-item">${esc(c.date_label)}${esc(dayNight)}</div>
         <div class="modal-display-item">${esc(artistLabel)}</div>
         <div class="modal-display-item">${esc(venueLabel)}</div>
-        ${perfName}
       </div>
       <div class="modal-divider"></div>
       <div class="modal-item">
         <div class="modal-label">形式</div>
         <select class="modal-select" id="edit-format">${formatOptions}</select>
+      </div>
+      <div class="modal-item">
+        <div class="modal-label">公演名</div>
+        <input class="modal-input" type="text" id="edit-performance-name" value="${esc(c.performance_name || '')}">
       </div>
       <div class="modal-item">
         <div class="modal-label">メモ</div>
@@ -1913,6 +1963,7 @@
       liveId: t.liveId,
       year:   year,
       format: document.getElementById('edit-format').value,
+      performance_name: document.getElementById('edit-performance-name').value,
       memo:   document.getElementById('edit-memo').value,
     };
 
@@ -2492,54 +2543,156 @@
     return all;
   }
 
+  // 【Ver2.8】演者名タップ → 中間一覧（対象1件ならカード直行）
   async function goToArtist(artistId) {
     const artist = (state.artists || []).find(a => a.id === artistId);
     if (!artist) return;
-
     const artistTab = state.currentArtistTab; // 'all' または年文字列
 
-    switchTab('concerts');
-
-    // 取得に時間がかかる場合、古い一覧が「絞り込み結果」に見えないよう明示する
+    // 対象年の公演データを確保（キャッシュ利用）
     showToast('⏳ 公演データを取得中...', { persistent: true });
     try {
-      // 演者一覧のタブ状態を公演一覧に引き継ぐ
-      if (artistTab === 'all') {
-        // すべて → 全年のそのアーティストの公演
-        state.concerts          = await _ensureAllYearsConcerts();
-        state.currentFilterYear = 'all';
-        state.filters = { artist: artist.name, year: null, prefecture: null };
-      } else {
-        // 年指定 → その年のそのアーティストの公演
-        state.concerts          = await _ensureYearConcerts(artistTab);
-        state.currentFilterYear = artistTab;
-        state.filters = { artist: artist.name, year: artistTab, prefecture: null };
-      }
+      if (artistTab === 'all') await _ensureAllYearsConcerts();
+      else                     await _ensureYearConcerts(artistTab);
     } finally {
       hideToast();
     }
 
-    state.selectedArtist = artist.name;
-    state.setlistCache   = {};
+    // その演者の対象公演（キャンセル除外・古い順）
+    const list = _lvArtistConcerts(artist.name, artistTab);
+
+    if (list.length <= 1) {
+      // 1件（以下）なら中間一覧を挟まずカードへ直行（通常経路＝戻るボタンなし）
+      await goToConcertFromList(artistId, list[0] ? list[0].id : null, false);
+    } else {
+      showArtistConcertList(artistId, list);
+    }
+  }
+
+  // 指定演者・タブの対象公演を返す（キャンセル除外・古い順）
+  function _lvArtistConcerts(artistName, artistTab) {
+    let pool = [];
+    if (artistTab === 'all') {
+      const seen = {};
+      Object.values(state.concertsByYear || {}).forEach(arr => (arr || []).forEach(c => {
+        if (c && c.id && !seen[c.id]) { seen[c.id] = true; pool.push(c); }
+      }));
+    } else {
+      pool = (state.concertsByYear[artistTab] || []).slice();
+    }
+    return pool
+      .filter(c => c.status !== 'キャンセル' && (c.artists || []).some(a => a.name === artistName))
+      .sort((x, y) => (x.date || '').localeCompare(y.date || ''));
+  }
+
+  // 【Ver2.8】演者別公演一覧（中間一覧）を表示
+  function showArtistConcertList(artistId, list) {
+    const artist = (state.artists || []).find(a => a.id === artistId);
+    if (!artist) return;
+    state._acArtistId = artistId;
+
+    document.getElementById('ac-title').textContent = artist.name;
+
+    // 統計（演者一覧と同じ・年タブ引き継ぎ）
+    const tab = state.currentArtistTab;
+    let attended, planned;
+    if (tab === 'all') {
+      attended = artist.total_attended || 0;
+      planned  = artist.total_planned  || 0;
+    } else {
+      attended = (artist.by_year         && artist.by_year[tab])         || 0;
+      planned  = (artist.by_year_planned && artist.by_year_planned[tab]) || 0;
+    }
+    document.getElementById('ac-stat').textContent = '参戦本数: ' + attended + '/' + planned + '本';
+
+    // 1公演1行で描画（日付・会場は常に表示、形式・公演名/共演者は「…」で省略）
+    document.getElementById('ac-list').innerHTML = list.map(c => {
+      const venue = c.venue ? c.venue.name : '';
+      const co    = (c.artists || []).filter(a => a.name !== artist.name).map(a => a.name);
+      const sub   = (co.length > 0)
+        ? '対バン（' + co.join('＆') + '）'
+        : [c.format, c.performance_name].filter(Boolean).join('・');
+      const fut   = c.is_future ? ' future' : '';
+      return `<div class="ac-row${fut}" onclick="goToConcertFromList('${artistId}','${c.id}',true)">` +
+             `<span class="ac-date">${esc(c.date_label || c.date || '')}</span>` +
+             `<span class="ac-venue">${esc(venue)}</span>` +
+             (sub ? `<span class="ac-sub">${esc(sub)}</span>` : '') +
+             `</div>`;
+    }).join('');
+
+    // 画面切替（switchTabは使わず.pageのactiveのみ切替・フッタータブは「演者一覧」のまま）
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.getElementById('page-artist-concerts').classList.add('active');
+    document.getElementById('filter-bar').style.display = 'none';
+    document.getElementById('counter').style.display    = 'none';
+
+    // 初期スクロール（すべて/当年＝本日に近い行へ、過去/未来年＝先頭）
+    const curY = new Date().getFullYear();
+    if (tab === 'all' || parseInt(tab) === curY) {
+      const today = new Date().toISOString().slice(0, 10);
+      const idx   = _findNearestIdx(list, today);
+      const rows  = document.querySelectorAll('#ac-list .ac-row');
+      if (idx > 0 && rows[idx]) rows[idx].scrollIntoView({ block: 'center' });
+    } else {
+      document.getElementById('ac-list').scrollTop = 0;
+    }
+  }
+
+  function hideArtistConcertList() {
+    document.getElementById('page-artist-concerts').classList.remove('active');
+    document.getElementById('page-artists').classList.add('active');
+  }
+
+  // 【Ver2.8】カード画面の「← 一覧に戻る」→ 中間一覧を再表示
+  function _lvBackToArtistList() {
+    if (!state._acArtistId) return;
+    const artist = (state.artists || []).find(a => a.id === state._acArtistId);
+    if (!artist) return;
+    state.cameFromArtistList = false;
+    _lvUpdateBackToListBtn();
+    showArtistConcertList(state._acArtistId, _lvArtistConcerts(artist.name, state.currentArtistTab));
+  }
+
+  function _lvUpdateBackToListBtn() {
+    const btn = document.getElementById('back-to-list-btn');
+    if (btn) btn.style.display = state.cameFromArtistList ? 'block' : 'none';
+  }
+
+  // 【Ver2.8】中間一覧の行タップ（または1件直行）→ カード表示（その演者で絞り込み）
+  async function goToConcertFromList(artistId, concertId, fromList) {
+    const artist = (state.artists || []).find(a => a.id === artistId);
+    if (!artist) return;
+    const artistTab = state.currentArtistTab;
+
+    switchTab('concerts'); // ここで cameFromArtistList は false にリセットされる
+
+    if (artistTab === 'all') {
+      state.concerts          = await _ensureAllYearsConcerts();
+      state.currentFilterYear = 'all';
+      state.filters = { artist: artist.name, year: null, prefecture: null };
+    } else {
+      state.concerts          = await _ensureYearConcerts(artistTab);
+      state.currentFilterYear = artistTab;
+      state.filters = { artist: artist.name, year: artistTab, prefecture: null };
+    }
+
+    state.selectedArtist     = artist.name;
+    state.setlistCache       = {};
+    state.cameFromArtistList = !!fromList; // switchTab後に設定
     renderConcerts();
     renderFilters();
+    _lvUpdateBackToListBtn();
 
-    // 初期表示位置（仕様書5.6・Table#16・4.4）
+    // 初期位置：concertId指定があればその公演へ、無ければ従来ロジック
     const today = new Date().toISOString().slice(0, 10);
     const curY  = new Date().getFullYear();
-    if (artistTab === 'all') {
-      // 全年 → 本日に最も近い公演
-      goTo(_findNearestIdx(state.filteredConcerts, today));
-    } else if (parseInt(artistTab) < curY) {
-      // 過去年 → その年の最初の公演
-      goTo(0);
-    } else if (parseInt(artistTab) > curY) {
-      // 未来年 → その年の最初の公演
-      goTo(0);
-    } else {
-      // 当年 → 本日に最も近い公演
-      goTo(_findNearestIdx(state.filteredConcerts, today));
+    let idx = -1;
+    if (concertId) idx = state.filteredConcerts.findIndex(c => c.id === concertId);
+    if (idx < 0) {
+      if (artistTab === 'all' || parseInt(artistTab) === curY) idx = _findNearestIdx(state.filteredConcerts, today);
+      else idx = 0;
     }
+    goTo(idx < 0 ? 0 : idx);
   }
 
   // ============================================================
@@ -2662,6 +2815,10 @@
     document.getElementById('page-' + tab).classList.add('active');
 
     state.currentTab = tab;
+
+    // 【Ver2.8】通常のタブ操作では「中間一覧経由」フラグを解除
+    state.cameFromArtistList = false;
+    _lvUpdateBackToListBtn();
 
     // フィルターバー・カウンターの表示制御
     document.getElementById('filter-bar').style.display = tab === 'concerts' ? 'flex' : 'none';
