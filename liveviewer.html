@@ -267,26 +267,32 @@
       box-shadow: 0 2px 8px rgba(0,0,0,0.35);
     }
     .ac-header {
-      display: flex; align-items: center; gap: 10px;
-      padding: 12px 16px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      display: flex; flex-direction: column; gap: 6px;
+      padding: 8px 16px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
+    .ac-top { display: flex; align-items: center; gap: 8px; }
     .ac-back {
       background: none; border: none; color: var(--accent);
       font-size: 24px; font-weight: 800; cursor: pointer; padding: 0 4px; flex-shrink: 0;
     }
-    .ac-title { font-size: 28px; font-weight: 800; color: var(--text); flex: 1; min-width: 0;
+    .ac-year-tabs {
+      display: flex; gap: 8px; overflow-x: auto; white-space: nowrap; flex: 1; min-width: 0;
+    }
+    .ac-year-tabs::-webkit-scrollbar { display: none; }
+    .ac-title { font-size: 28px; font-weight: 800; color: var(--text);
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .ac-stat  { font-size: 18px; color: var(--text-sub); flex-shrink: 0; }
+    .ac-stat  { font-size: 16px; color: var(--text-sub); text-align: right; }
+    .ac-stat-num { font-size: 24px; font-weight: 800; color: var(--text); }
     .ac-list  { overflow-y: auto; flex: 1; }
     .ac-row {
       display: flex; align-items: baseline; gap: 8px;
-      padding: 12px 16px; border-bottom: 1px solid var(--border);
+      padding: 7px 16px; border-bottom: 1px solid var(--border);
       cursor: pointer; white-space: nowrap; overflow: hidden;
     }
     .ac-row.future { background: var(--bg-future); }
-    .ac-date  { font-size: 20px; color: var(--text); flex-shrink: 0; font-variant-numeric: tabular-nums; }
-    .ac-venue { font-size: 14px; color: var(--accent); flex-shrink: 0; }
-    .ac-sub   { font-size: 13px; color: var(--text-sub); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .ac-date  { font-size: 18px; color: var(--text); flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .ac-venue { font-size: 16px; color: var(--accent); flex-shrink: 0; }
+    .ac-sub   { font-size: 14px; color: var(--text-sub); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
     .artist-item {
       display: flex; align-items: center; gap: 14px;
       padding: 12px 0; border-bottom: 1px solid var(--border);
@@ -672,7 +678,10 @@
   <!-- 演者別公演一覧（中間一覧・Ver2.8） -->
   <div class="page" id="page-artist-concerts">
     <div class="ac-header">
-      <button class="ac-back" onclick="hideArtistConcertList()">←</button>
+      <div class="ac-top">
+        <button class="ac-back" onclick="hideArtistConcertList()">←</button>
+        <div class="ac-year-tabs" id="ac-year-tabs"></div>
+      </div>
       <div class="ac-title" id="ac-title"></div>
       <div class="ac-stat" id="ac-stat"></div>
     </div>
@@ -2613,15 +2622,26 @@
       attended = (artist.by_year         && artist.by_year[tab])         || 0;
       planned  = (artist.by_year_planned && artist.by_year_planned[tab]) || 0;
     }
-    document.getElementById('ac-stat').textContent = '参戦本数: ' + attended + '/' + planned + '本';
+    document.getElementById('ac-stat').innerHTML =
+      '参戦本数: <span class="ac-stat-num">' + attended + '</span>/<span class="ac-stat-num">' + planned + '</span>本';
+
+    // 【①】この画面でも対象年を選べる年タブ
+    const tabList = ['all'].concat(state.artistYears || []);
+    document.getElementById('ac-year-tabs').innerHTML = tabList.map(t => {
+      const label  = (t === 'all') ? 'すべて' : (t + '年');
+      const active = (t === tab) ? ' active' : '';
+      return `<div class="artist-year-tab${active}" onclick="_lvAcYearTab('${t}')">${label}</div>`;
+    }).join('');
 
     // 1公演1行で描画（日付・会場は常に表示、形式・公演名/共演者は「…」で省略）
     document.getElementById('ac-list').innerHTML = list.map(c => {
       const venue = c.venue ? c.venue.name : '';
       const co    = (c.artists || []).filter(a => a.name !== artist.name).map(a => a.name);
-      const sub   = (co.length > 0)
-        ? '対バン（' + co.join('＆') + '）'
-        : [c.format, c.performance_name].filter(Boolean).join('・');
+      const parts = [];
+      if (co.length > 0)      parts.push(co.join('＆'));  // 【⑥】対バンでも「対バン」の文字は出さず共演者名のみ
+      else if (c.format)      parts.push(c.format);       // 単独等は形式
+      if (c.performance_name) parts.push(c.performance_name);
+      const sub = parts.join('・');
       const fut   = c.is_future ? ' future' : '';
       return `<div class="ac-row${fut}" onclick="goToConcertFromList('${artistId}','${c.id}',true)">` +
              `<span class="ac-date">${esc(_lvFmtDate(c.date))}</span>` +
@@ -2648,9 +2668,25 @@
     }
   }
 
+  // 【①】中間一覧内の年タブ切替（対象年を変えてその演者の公演を絞り直す）
+  async function _lvAcYearTab(year) {
+    if (!state._acArtistId) return;
+    state.currentArtistTab = year;
+    showToast('⏳ 公演データを取得中...', { persistent: true });
+    try {
+      if (year === 'all') await _ensureAllYearsConcerts();
+      else                await _ensureYearConcerts(year);
+    } finally {
+      hideToast();
+    }
+    const artist = (state.artists || []).find(a => a.id === state._acArtistId);
+    if (artist) showArtistConcertList(state._acArtistId, _lvArtistConcerts(artist.name, year));
+  }
+
   function hideArtistConcertList() {
     document.getElementById('page-artist-concerts').classList.remove('active');
     document.getElementById('page-artists').classList.add('active');
+    renderArtists(); // 年タブ変更を演者一覧にも反映
   }
 
   // 【Ver2.8】カード画面の「← 一覧に戻る」→ 中間一覧を再表示
