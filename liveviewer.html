@@ -279,7 +279,7 @@
       display: flex; gap: 8px; overflow-x: auto; white-space: nowrap; flex: 1; min-width: 0;
     }
     .ac-year-tabs::-webkit-scrollbar { display: none; }
-    .ac-title { font-size: 28px; font-weight: 800; color: #ffe082; line-height: 1.15; margin-top: 4px;
+    .ac-title { font-size: 28px; font-weight: 800; color: #ffe082; line-height: 1.15; margin-top: 8px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ac-stat  { font-size: 16px; color: var(--text-sub); text-align: right; line-height: 1; }
     .ac-stat-num { font-size: 24px; font-weight: 800; color: var(--text); }
@@ -293,7 +293,7 @@
     .ac-date  { font-size: 18px; color: var(--text); flex-shrink: 0; font-variant-numeric: tabular-nums; }
     .ac-venue { font-size: 16px; color: var(--accent); flex-shrink: 0; }
     .ac-sub   { font-size: 14px; color: var(--text-sub); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
-    .ac-oneman { color: #ff5252; font-weight: 700; }
+    .ac-oneman { color: #ec6d51; font-weight: 700; }
     .artist-item {
       display: flex; align-items: center; gap: 14px;
       padding: 3px 0; border-bottom: 1px solid var(--border);
@@ -308,7 +308,7 @@
     }
     .artist-icon img { width: 100%; height: 100%; object-fit: cover; }
     .artist-info { flex: 1; }
-    .artist-item-name { font-size: 18px; font-weight: 700; color: var(--text); }
+    .artist-item-name { font-size: 17px; font-weight: 700; color: var(--text); }
     .artist-item-sub  { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
     .artist-item-count {
       font-size: 20px; font-weight: 800;
@@ -2660,6 +2660,7 @@
     document.getElementById('page-artist-concerts').classList.add('active');
     document.getElementById('filter-bar').style.display = 'none';
     document.getElementById('counter').style.display    = 'none';
+    _lvSetMainPad(false);
 
     // 初期スクロール（すべて/当年＝本日に近い行へ、過去/未来年＝先頭）
     const curY = new Date().getFullYear();
@@ -2691,6 +2692,7 @@
   function hideArtistConcertList() {
     document.getElementById('page-artist-concerts').classList.remove('active');
     document.getElementById('page-artists').classList.add('active');
+    _lvSetMainPad(false);
     renderArtists(); // 年タブ変更を演者一覧にも反映
   }
 
@@ -2858,6 +2860,14 @@
   // ============================================================
   // タブ切り替え
   // ============================================================
+  // ヘッダーのフィルターバー表示に合わせて本文の上余白を調整（フィルター非表示のページは詰める）
+  function _lvSetMainPad(showFilter) {
+    const main = document.querySelector('.main');
+    if (main) main.style.paddingTop = showFilter
+      ? 'calc(env(safe-area-inset-top) + 48px + 36px)'
+      : 'calc(env(safe-area-inset-top) + 48px)';
+  }
+
   async function switchTab(tab) {
     document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
     document.getElementById('tab-' + tab).classList.add('active');
@@ -2874,6 +2884,7 @@
     // フィルターバー・カウンターの表示制御
     document.getElementById('filter-bar').style.display = tab === 'concerts' ? 'flex' : 'none';
     document.getElementById('counter').style.display    = tab === 'concerts' ? 'block' : 'none';
+    _lvSetMainPad(tab === 'concerts');
 
     // 演者一覧へ遷移したらタブを「すべて」にリセット（仕様書5.12.3）
     if (tab === 'artists') {
