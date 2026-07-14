@@ -234,7 +234,7 @@
 
     /* ============ 演者一覧 ============ */
     .artist-year-tabs {
-      display: flex; gap: 8px; padding: 4px 16px;
+      display: flex; gap: 8px; padding: 0 16px 4px;
       overflow-x: auto; white-space: nowrap;
       border-bottom: 1px solid var(--border);
       flex-shrink: 0;
@@ -268,7 +268,7 @@
     }
     .ac-header {
       display: flex; flex-direction: column; gap: 0;
-      padding: 3px 16px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+      padding: 0 16px 8px; border-bottom: 1px solid var(--border); flex-shrink: 0;
     }
     .ac-top { display: flex; align-items: center; gap: 8px; }
     .ac-back {
@@ -279,7 +279,7 @@
       display: flex; gap: 8px; overflow-x: auto; white-space: nowrap; flex: 1; min-width: 0;
     }
     .ac-year-tabs::-webkit-scrollbar { display: none; }
-    .ac-title { font-size: 28px; font-weight: 800; color: var(--text); line-height: 1.15; margin-top: 4px;
+    .ac-title { font-size: 28px; font-weight: 800; color: #ffe082; line-height: 1.15; margin-top: 4px;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .ac-stat  { font-size: 16px; color: var(--text-sub); text-align: right; line-height: 1; }
     .ac-stat-num { font-size: 24px; font-weight: 800; color: var(--text); }
@@ -293,9 +293,10 @@
     .ac-date  { font-size: 18px; color: var(--text); flex-shrink: 0; font-variant-numeric: tabular-nums; }
     .ac-venue { font-size: 16px; color: var(--accent); flex-shrink: 0; }
     .ac-sub   { font-size: 14px; color: var(--text-sub); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .ac-oneman { color: #ff5252; font-weight: 700; }
     .artist-item {
       display: flex; align-items: center; gap: 14px;
-      padding: 9px 0; border-bottom: 1px solid var(--border);
+      padding: 3px 0; border-bottom: 1px solid var(--border);
       cursor: pointer;
     }
     .artist-item:last-child { border-bottom: none; }
@@ -307,7 +308,7 @@
     }
     .artist-icon img { width: 100%; height: 100%; object-fit: cover; }
     .artist-info { flex: 1; }
-    .artist-item-name { font-size: 16px; font-weight: 700; color: var(--text); }
+    .artist-item-name { font-size: 18px; font-weight: 700; color: var(--text); }
     .artist-item-sub  { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
     .artist-item-count {
       font-size: 20px; font-weight: 800;
@@ -2638,15 +2639,19 @@
       const venue = c.venue ? c.venue.name : '';
       const co    = (c.artists || []).filter(a => a.name !== artist.name).map(a => a.name);
       const parts = [];
-      if (co.length > 0)      parts.push(co.join('＆'));                 // 共演者名のみ
-      else if (c.format && c.format !== '対バン') parts.push(c.format);  // 【③】形式（「対バン」の文字は出さない）
-      if (c.performance_name) parts.push(c.performance_name);
+      if (co.length > 0) {
+        parts.push(esc(co.join('＆')));                                   // 共演者名のみ
+      } else if (c.format && c.format !== '対バン') {
+        // 【③】「ワンマン」は赤字、それ以外の形式は通常表示
+        parts.push(c.format === 'ワンマン' ? `<span class="ac-oneman">${esc(c.format)}</span>` : esc(c.format));
+      }
+      if (c.performance_name) parts.push(esc(c.performance_name));
       const sub = parts.join('・');
       const fut   = c.is_future ? ' future' : '';
       return `<div class="ac-row${fut}" onclick="goToConcertFromList('${artistId}','${c.id}',true)">` +
              `<span class="ac-date">${esc(_lvFmtDate(c.date))}</span>` +
              `<span class="ac-venue">${esc(venue)}</span>` +
-             (sub ? `<span class="ac-sub">${esc(sub)}</span>` : '') +
+             (sub ? `<span class="ac-sub">${sub}</span>` : '') +
              `</div>`;
     }).join('');
 
