@@ -1,9 +1,15 @@
 /**
  * liveviewer_sw.js
  * ライブビューワー Service Worker
- * Ver 1.4.0
+ * Ver 1.7.0
  *
  * 変更履歴：
+ * v1.7.0 - バグ⑤修正（書き込み対象を操作開始時に確定し、送信時の再解決を全廃／
+ *          モーダル中スワイプロック／保存先明示）に伴うHTML改訂のためキャッシュ名をv13に更新
+ * v1.6.0 - Phase 2 Part A（アーティスト画像をGitHub Pages直接参照へ移行し、
+ *          端末へのbase64保存を廃止）に伴うHTML改訂のためキャッシュ名をv12に更新
+ * v1.5.0 - Phase 2 Part B（セトリキャッシュ2MB上限・LRU）に伴うHTML改訂のため
+ *          キャッシュ名をv11に更新
  * v1.4.0 - Ver2.4 データ取得改善（3段階フォールバック・並列取得・取得中表示・再試行・
  *          統計鮮度・更新ボタン改善）に伴うHTML改訂のためキャッシュ名をv10に更新
  * v1.3.0 - Phase 1仕上げ: 障害復旧機構（修復ボタン・reset.html等）の追加に伴うHTML改訂のため
@@ -14,7 +20,7 @@
  * v1.0.0 - 初版作成
  */
 
-var CACHE_NAME    = 'liveviewer-v10';
+var CACHE_NAME    = 'liveviewer-v13';
 var STATIC_ASSETS = [
   './',
   './liveviewer.html',
