@@ -643,7 +643,7 @@
       display: flex; align-items: center; justify-content: space-between;
       padding: 4px 16px 10px; flex-shrink: 0;
     }
-    .exp-topbar-label { font-size: 18px; font-weight: 700; color: var(--text); }
+    .exp-topbar-label { font-size: 20px; font-weight: 700; color: var(--text); }
     .exp-cal-btn {
       background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
       width: 34px; height: 34px; font-size: 16px; color: var(--text); cursor: pointer;
@@ -660,12 +660,17 @@
     .exp-card-status { font-weight: 800; color: #111; }
     .exp-card-amount { font-weight: 800; color: #333; font-variant-numeric: tabular-nums; }
 
-    /* 交通：出発地→到着地の行程は最重要なので2ランク大きく（便名・ステータス等は現状サイズのまま） */
-    .exp-card-transport-route { font-size: 17px; font-weight: 700; color: #111; margin-bottom: 6px; line-height: 1.4; }
+    /* 交通：出発地→到着地の行程は最重要（便名・ステータス等は現状サイズのまま） */
+    .exp-card-transport-route { font-size: 19px; font-weight: 700; color: #111; margin-bottom: 6px; line-height: 1.4; }
 
-    /* ホテル名はワンランク大きく、（チェックイン）等の補足はワンランク小さく */
-    .exp-card-hotel-name   { font-size: 16px; font-weight: 800; color: #111; }
+    /* ホテル名は大きく、（チェックイン）等の補足はそのまま */
+    .exp-card-hotel-name   { font-size: 20px; font-weight: 800; color: #111; }
     .exp-card-hotel-suffix { font-size: 12px; font-weight: 700; color: #333; }
+
+    /* ライブ：バンド名は大きく、会場名も大きく、公演名はバンド名より小さく（無ければ詰める） */
+    .exp-card-live-name    { font-size: 18px; font-weight: 800; color: #111; margin-bottom: 3px; }
+    .exp-card-live-venue   { font-size: 16.5px; color: #333; margin-bottom: 4px; }
+    .exp-card-live-perfname{ font-size: 14px; color: #444; }
 
     .exp-card.live  { background: #f5e6a3; }
     .exp-card.hotel { background: #c5e8d2; }
@@ -3158,8 +3163,9 @@
 
     if (item.type === 'live') {
       return `<div class="exp-card live">
-        <div class="exp-card-name">【ライブ】${esc(item.artist)}</div>
-        ${item.venue ? `<div class="exp-card-route">@${esc(item.venue)}</div>` : ''}
+        <div class="exp-card-live-name">【ライブ】${esc(item.artist)}</div>
+        ${item.venue ? `<div class="exp-card-live-venue">@${esc(item.venue)}</div>` : ''}
+        ${item.perfName ? `<div class="exp-card-live-perfname">${esc(item.perfName)}</div>` : ''}
       </div>`;
     }
 
