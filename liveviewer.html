@@ -643,7 +643,7 @@
       display: flex; align-items: center; justify-content: space-between;
       padding: 4px 16px 10px; flex-shrink: 0;
     }
-    .exp-topbar-label { font-size: 16px; font-weight: 700; color: var(--text); }
+    .exp-topbar-label { font-size: 18px; font-weight: 700; color: var(--text); }
     .exp-cal-btn {
       background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
       width: 34px; height: 34px; font-size: 16px; color: var(--text); cursor: pointer;
@@ -653,21 +653,29 @@
     .exp-day { padding: 4px 16px 24px; }
     .exp-empty { text-align: center; color: var(--text-dim); padding: 60px 20px; font-size: 14px; }
 
-    .exp-card { border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
-    .exp-card-name   { font-size: 14px; font-weight: 700; color: var(--text); margin-bottom: 3px; }
-    .exp-card-route  { font-size: 12.5px; color: var(--text-sub); margin-bottom: 6px; }
+    .exp-card { border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; box-shadow: 0 3px 10px rgba(0,0,0,0.45); }
+    .exp-card-name   { font-size: 14px; font-weight: 800; color: #111; margin-bottom: 3px; }
+    .exp-card-route  { font-size: 12.5px; color: #333; margin-bottom: 6px; }
     .exp-card-meta   { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; }
-    .exp-card-status { font-weight: 700; color: var(--text); }
-    .exp-card-amount { font-weight: 700; color: var(--text-sub); font-variant-numeric: tabular-nums; }
+    .exp-card-status { font-weight: 800; color: #111; }
+    .exp-card-amount { font-weight: 800; color: #333; font-variant-numeric: tabular-nums; }
 
-    .exp-card.live  { background: rgba(240,205,90,0.16); border: 1px solid rgba(240,205,90,0.35); }
-    .exp-card.hotel { background: rgba(76,175,125,0.20); border: 1px solid rgba(76,175,125,0.40); }
-    .exp-card.hotel.duplicate { background: rgba(229,115,115,0.28); border: 1px solid #e57373; }
-    .exp-card.hotel.duplicate .exp-card-name { color: #ff9d9d; }
+    /* 交通：出発地→到着地の行程は最重要なので2ランク大きく（便名・ステータス等は現状サイズのまま） */
+    .exp-card-transport-route { font-size: 17px; font-weight: 700; color: #111; margin-bottom: 6px; line-height: 1.4; }
 
-    .exp-card.transport.tier-25  { background: rgba(90,150,220,0.10); border: 1px solid rgba(90,150,220,0.22); }
-    .exp-card.transport.tier-55  { background: rgba(90,150,220,0.22); border: 1px solid rgba(90,150,220,0.38); }
-    .exp-card.transport.tier-100 { background: rgba(90,150,220,0.38); border: 1px solid rgba(90,150,220,0.55); }
+    /* ホテル名はワンランク大きく、（チェックイン）等の補足はワンランク小さく */
+    .exp-card-hotel-name   { font-size: 16px; font-weight: 800; color: #111; }
+    .exp-card-hotel-suffix { font-size: 12px; font-weight: 700; color: #333; }
+
+    .exp-card.live  { background: #f5e6a3; }
+    .exp-card.hotel { background: #c5e8d2; }
+    .exp-card.hotel.duplicate { background: #f6c6c6; }
+    .exp-card.hotel.duplicate .exp-card-hotel-name,
+    .exp-card.hotel.duplicate .exp-card-name { color: #7a1f1f; }
+
+    .exp-card.transport.tier-25  { background: #eaf3fa; }
+    .exp-card.transport.tier-55  { background: #d3e7f5; }
+    .exp-card.transport.tier-100 { background: #bfdff2; }
 
     .exp-dots { display: flex; justify-content: center; gap: 6px; padding: 8px 0; flex-shrink: 0; }
     .exp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
@@ -3084,12 +3092,26 @@
   state.expedition = { subtab: 'checklist', days: [], idx: 0, loadedTo: null, loading: false };
 
   async function expInit() {
-    state.expeditionLoaded = true;
-    const today = new Date();
-    const from  = today.toISOString().slice(0, 10);
-    const to    = new Date(today.getTime() + 10 * 86400000).toISOString().slice(0, 10);
-    await expFetchRange(from, to, true);
-    state.expedition.loadedTo = to;
+    const track = document.getElementById('exp-track');
+    track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込み中...（初回は手動入力シートの更新もあわせて行うため、数十秒かかる場合があります）</div></div>';
+    document.getElementById('exp-dots').innerHTML = '';
+    document.getElementById('exp-top-label').textContent = '';
+
+    try {
+      const today = new Date();
+      const from  = today.toISOString().slice(0, 10);
+      const to    = new Date(today.getTime() + 10 * 86400000).toISOString().slice(0, 10);
+      await expFetchRange(from, to, true);
+      state.expedition.loadedTo = to;
+      state.expeditionLoaded = true;
+    } catch(e) {
+      track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込みに失敗しました：' + esc(e.message) + '<br><br><span style="text-decoration:underline;cursor:pointer" onclick="expRetry()">タップして再試行</span></div></div>';
+      state.expeditionLoaded = false;
+    }
+  }
+
+  function expRetry() {
+    expInit();
   }
 
   async function expFetchRange(from, to, replace) {
@@ -3144,7 +3166,7 @@
     if (item.type === 'transport') {
       return `<div class="exp-card transport tier-${item.statusTier}">
         <div class="exp-card-name">${esc(item.name || item.kind)}</div>
-        <div class="exp-card-route">${esc(item.depTime)} ${esc(item.depPlace)} → ${esc(item.arrTime)} ${esc(item.arrPlace)}${item.seat ? ' ／ ' + esc(item.seat) : ''}</div>
+        <div class="exp-card-transport-route">${esc(item.depTime)} ${esc(item.depPlace)} → ${esc(item.arrTime)} ${esc(item.arrPlace)}${item.seat ? ' ／ ' + esc(item.seat) : ''}</div>
         <div class="exp-card-meta">
           <span class="exp-card-status">${item.statusIcon} ${esc(item.status)}</span>
           <span class="exp-card-amount">${amount}</span>
@@ -3156,11 +3178,11 @@
     const dupClass = item.duplicate ? ' duplicate' : '';
     if (item.hotelPhase === 'staying') {
       return `<div class="exp-card hotel${dupClass}">
-        <div class="exp-card-name">${esc(item.facility)}（宿泊中）</div>
+        <span class="exp-card-hotel-name">${esc(item.facility)}</span><span class="exp-card-hotel-suffix">（宿泊中）</span>
       </div>`;
     }
     return `<div class="exp-card hotel${dupClass}">
-      <div class="exp-card-name">${esc(item.facility)}（チェックイン）${item.duplicate ? ' ⚠️重複予約' : ''}</div>
+      <div style="margin-bottom:3px"><span class="exp-card-hotel-name">${esc(item.facility)}</span><span class="exp-card-hotel-suffix">（チェックイン）${item.duplicate ? ' ⚠️重複予約' : ''}</span></div>
       <div class="exp-card-route">${esc(item.site)}${item.reservationNo ? ' ／ ' + esc(item.reservationNo) : ''}</div>
       <div class="exp-card-meta">
         <span class="exp-card-status">${item.statusIcon} ${esc(item.status)}${item.cancelDeadline ? ' ／ 期限' + esc(item.cancelDeadline) : ''}</span>
