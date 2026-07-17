@@ -689,14 +689,18 @@
     /* 遠征一覧（B） */
     .exp-topbar-sub { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
     .exp-daylabel {
-      font-size: 14px; font-weight: 800; color: var(--text);
-      letter-spacing: .02em; margin: 16px 2px 8px;
+      font-size: 16px; font-weight: 800; color: var(--text);
+      letter-spacing: .02em; margin-bottom: 8px;
     }
-    .exp-daylabel:first-child { margin-top: 2px; }
     .exp-dash-tap-hint {
       text-align: center; font-size: 11.5px; color: var(--text-dim);
       padding: 6px 16px 2px;
     }
+
+    /* 日付ブロックごとに背景色を交互に変えて区切りを分かりやすく */
+    .exp-day-block { padding: 14px 16px 4px; margin: 0 -16px 4px; }
+    .exp-day-block.alt-a { background: var(--bg); }
+    .exp-day-block.alt-b { background: #2a1418; }
   </style>
 </head>
 <body>
@@ -3377,8 +3381,11 @@
     exps.forEach((ex, i) => {
       const slide = document.createElement('div');
       slide.className = 'swiper-slide';
-      const daysHtml = ex.days.map(day =>
-        '<div class="exp-daylabel">' + esc(day.dateLabel) + '</div>' + day.items.map(expBuildCard).join('')
+      const daysHtml = ex.days.map((day, di) =>
+        '<div class="exp-day-block ' + (di % 2 === 0 ? 'alt-a' : 'alt-b') + '">' +
+          '<div class="exp-daylabel">' + esc(day.dateLabel) + '</div>' +
+          day.items.map(expBuildCard).join('') +
+        '</div>'
       ).join('');
       slide.innerHTML = '<div class="exp-day">' + daysHtml +
         '<div class="exp-dash-tap-hint" onclick="expDashJumpToChecklist(\'' + ex.startDate + '\')">タップしてチェックリストで見る →</div>' +
