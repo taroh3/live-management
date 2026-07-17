@@ -685,6 +685,18 @@
     .exp-dots { display: flex; justify-content: center; gap: 6px; padding: 8px 0; flex-shrink: 0; }
     .exp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--border); }
     .exp-dot.active { background: var(--accent); width: 16px; border-radius: 4px; }
+
+    /* 遠征一覧（B） */
+    .exp-topbar-sub { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
+    .exp-daylabel {
+      font-size: 14px; font-weight: 800; color: var(--text);
+      letter-spacing: .02em; margin: 16px 2px 8px;
+    }
+    .exp-daylabel:first-child { margin-top: 2px; }
+    .exp-dash-tap-hint {
+      text-align: center; font-size: 11.5px; color: var(--text-dim);
+      padding: 6px 16px 2px;
+    }
   </style>
 </head>
 <body>
@@ -758,12 +770,25 @@
       <div class="exp-subtab" id="exp-subtab-dashboard" onclick="expSwitchSubtab('dashboard')">遠征一覧</div>
     </div>
     <div class="exp-topbar" id="exp-topbar">
-      <div class="exp-topbar-label" id="exp-top-label"></div>
+      <div>
+        <div class="exp-topbar-label" id="exp-top-label"></div>
+      </div>
     </div>
     <div class="swiper-outer" id="exp-swiper">
       <div class="swiper-track" id="exp-track"></div>
     </div>
     <div class="exp-dots" id="exp-dots"></div>
+
+    <div class="exp-topbar" id="exp-dash-topbar" style="display:none">
+      <div>
+        <div class="exp-topbar-label" id="exp-dash-top-label"></div>
+        <div class="exp-topbar-sub" id="exp-dash-top-sub"></div>
+      </div>
+    </div>
+    <div class="swiper-outer" id="exp-dash-swiper" style="display:none">
+      <div class="swiper-track" id="exp-dash-track"></div>
+    </div>
+    <div class="exp-dots" id="exp-dash-dots" style="display:none"></div>
   </div>
 
 </div>
@@ -3285,23 +3310,157 @@
     document.getElementById('exp-subtab-' + sub).classList.add('active');
 
     const showChecklist = sub === 'checklist';
-    document.getElementById('exp-swiper').style.display  = showChecklist ? '' : 'none';
-    document.getElementById('exp-dots').style.display    = showChecklist ? '' : 'none';
-    document.getElementById('exp-topbar').style.display  = showChecklist ? '' : 'none';
+    document.getElementById('exp-swiper').style.display      = showChecklist ? '' : 'none';
+    document.getElementById('exp-dots').style.display        = showChecklist ? '' : 'none';
+    document.getElementById('exp-topbar').style.display      = showChecklist ? '' : 'none';
+    document.getElementById('exp-dash-swiper').style.display = showChecklist ? 'none' : '';
+    document.getElementById('exp-dash-dots').style.display   = showChecklist ? 'none' : '';
+    document.getElementById('exp-dash-topbar').style.display = showChecklist ? 'none' : '';
 
-    let ph = document.getElementById('exp-dashboard-placeholder');
-    if (!showChecklist) {
-      if (!ph) {
-        ph = document.createElement('div');
-        ph.id = 'exp-dashboard-placeholder';
-        ph.className = 'exp-empty';
-        ph.textContent = '遠征一覧（ダッシュボード）は準備中です';
-        document.getElementById('page-expedition').appendChild(ph);
-      }
-      ph.style.display = 'block';
-    } else if (ph) {
-      ph.style.display = 'none';
+    if (!showChecklist && !state.expeditionDashboardLoaded) {
+      expDashInit();
     }
+  }
+
+  // ---- 遠征一覧（B）：チェックリストと同じカード表現を流用 ----
+  state.expeditionDash = { expeditions: [], idx: 0, loadedTo: null, loading: false };
+
+  async function expDashInit() {
+    const track = document.getElementById('exp-dash-track');
+    track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込み中...</div></div>';
+    document.getElementById('exp-dash-dots').innerHTML = '';
+    document.getElementById('exp-dash-top-label').textContent = '';
+    document.getElementById('exp-dash-top-sub').textContent = '';
+
+    try {
+      const today = new Date();
+      const from  = today.toISOString().slice(0, 10);
+      const to    = new Date(today.getTime() + 180 * 86400000).toISOString().slice(0, 10);
+      await expDashFetchRange(from, to, true);
+      state.expeditionDash.loadedTo = to;
+      expDashGoTo(0, false);
+      state.expeditionDashboardLoaded = true;
+    } catch(e) {
+      track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込みに失敗しました：' + esc(e.message) + '<br><br><span style="text-decoration:underline;cursor:pointer" onclick="expDashRetry()">タップして再試行</span></div></div>';
+      state.expeditionDashboardLoaded = false;
+    }
+  }
+
+  function expDashRetry() { expDashInit(); }
+
+  async function expDashFetchRange(from, to, replace) {
+    const data = await apiGet('lv_expedition_dashboard', { from, to });
+    if (replace) {
+      state.expeditionDash.expeditions = data.expeditions;
+    } else {
+      const existingStarts = new Set(state.expeditionDash.expeditions.map(x => x.startDate));
+      data.expeditions.forEach(x => { if (!existingStarts.has(x.startDate)) state.expeditionDash.expeditions.push(x); });
+      state.expeditionDash.expeditions.sort((a, b) => a.startDate.localeCompare(b.startDate));
+    }
+    expDashRenderTrack();
+  }
+
+  function expDashRenderTrack() {
+    const track = document.getElementById('exp-dash-track');
+    const dots  = document.getElementById('exp-dash-dots');
+    const exps  = state.expeditionDash.expeditions;
+    track.innerHTML = '';
+    dots.innerHTML  = '';
+
+    if (exps.length === 0) {
+      track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">遠征予定はありません</div></div>';
+      document.getElementById('exp-dash-top-label').textContent = '';
+      document.getElementById('exp-dash-top-sub').textContent = '';
+      return;
+    }
+
+    exps.forEach((ex, i) => {
+      const slide = document.createElement('div');
+      slide.className = 'swiper-slide';
+      const daysHtml = ex.days.map(day =>
+        '<div class="exp-daylabel">' + esc(day.dateLabel) + '</div>' + day.items.map(expBuildCard).join('')
+      ).join('');
+      slide.innerHTML = '<div class="exp-day">' + daysHtml +
+        '<div class="exp-dash-tap-hint" onclick="expDashJumpToChecklist(\'' + ex.startDate + '\')">タップしてチェックリストで見る →</div>' +
+      '</div>';
+      track.appendChild(slide);
+
+      const dot = document.createElement('div');
+      dot.className = 'exp-dot' + (i === state.expeditionDash.idx ? ' active' : '');
+      dots.appendChild(dot);
+    });
+
+    expDashGoTo(Math.min(state.expeditionDash.idx, exps.length - 1), false);
+  }
+
+  function expDashGoTo(idx, animate) {
+    const exps = state.expeditionDash.expeditions;
+    if (idx < 0 || idx >= exps.length) return;
+    state.expeditionDash.idx = idx;
+
+    const track = document.getElementById('exp-dash-track');
+    if (animate === false) {
+      track.style.transition = 'none';
+      track.style.transform  = `translateX(-${idx * 100}%)`;
+      track.offsetHeight;
+      track.style.transition = '';
+    } else {
+      track.style.transform = `translateX(-${idx * 100}%)`;
+    }
+
+    const ex = exps[idx];
+    document.getElementById('exp-dash-top-label').textContent = ex.periodLabel;
+    document.getElementById('exp-dash-top-sub').textContent =
+      [ex.prefecture, ex.concertCount ? ex.concertCount + '公演' : ''].filter(Boolean).join(' ／ ');
+    document.querySelectorAll('#exp-dash-dots .exp-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
+
+    if (idx >= exps.length - 2 && !state.expeditionDash.loading) expDashLoadMore();
+  }
+
+  async function expDashLoadMore() {
+    if (!state.expeditionDash.loadedTo) return;
+    state.expeditionDash.loading = true;
+    try {
+      const nextTo = new Date(new Date(state.expeditionDash.loadedTo).getTime() + 180 * 86400000).toISOString().slice(0, 10);
+      await expDashFetchRange(state.expeditionDash.loadedTo, nextTo, false);
+      state.expeditionDash.loadedTo = nextTo;
+    } finally {
+      state.expeditionDash.loading = false;
+    }
+  }
+
+  let expDashTouchStartX = 0, expDashTouchStartY = 0;
+  (function() {
+    const sw = document.getElementById('exp-dash-swiper');
+    sw.addEventListener('touchstart', e => {
+      expDashTouchStartX = e.touches[0].clientX;
+      expDashTouchStartY = e.touches[0].clientY;
+    }, { passive: true });
+    sw.addEventListener('touchend', e => {
+      if (state.expedition.subtab !== 'dashboard') return;
+      const dx = e.changedTouches[0].clientX - expDashTouchStartX;
+      const dy = e.changedTouches[0].clientY - expDashTouchStartY;
+      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 40) {
+        if (dx < 0) expDashGoTo(state.expeditionDash.idx + 1);
+        else        expDashGoTo(state.expeditionDash.idx - 1);
+      }
+    }, { passive: true });
+  })();
+
+  // 遠征一覧のカードをタップ → チェックリストへ遷移し、その遠征の最初の日付から表示（仕様4.4）
+  async function expDashJumpToChecklist(dateIso) {
+    expSwitchSubtab('checklist');
+
+    let idx = state.expedition.days.findIndex(d => d.date === dateIso);
+    if (idx < 0) {
+      const from = new Date(new Date(dateIso).getTime() - 3  * 86400000).toISOString().slice(0, 10);
+      const to   = new Date(new Date(dateIso).getTime() + 15 * 86400000).toISOString().slice(0, 10);
+      await expFetchRange(from, to, false);
+      if (!state.expedition.loadedFrom || from < state.expedition.loadedFrom) state.expedition.loadedFrom = from;
+      if (!state.expedition.loadedTo   || to   > state.expedition.loadedTo)   state.expedition.loadedTo   = to;
+      idx = state.expedition.days.findIndex(d => d.date === dateIso);
+    }
+    if (idx >= 0) expGoTo(idx);
   }
 
   function expOpenDateJump() {
