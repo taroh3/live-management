@@ -668,9 +668,9 @@
     .exp-card-hotel-suffix { font-size: 12px; font-weight: 700; color: #333; }
 
     /* ライブ：バンド名は大きく、会場名も大きく、公演名はバンド名より小さく（無ければ詰める） */
-    .exp-card-live-name    { font-size: 18px; font-weight: 800; color: #111; margin-bottom: 3px; }
-    .exp-card-live-venue   { font-size: 16.5px; color: #333; margin-bottom: 4px; }
-    .exp-card-live-perfname{ font-size: 14px; color: #444; }
+    .exp-card-live-name    { font-size: 22px; font-weight: 800; color: #111; margin-bottom: 3px; }
+    .exp-card-live-perfname{ font-size: 14px; color: #111; margin-bottom: 4px; }
+    .exp-card-live-venue   { font-size: 16.5px; color: #333; }
 
     .exp-card.live  { background: #f5e6a3; }
     .exp-card.hotel { background: #c5e8d2; }
@@ -3094,7 +3094,7 @@
   // ============================================================
   // 遠征管理タブ
   // ============================================================
-  state.expedition = { subtab: 'checklist', days: [], idx: 0, loadedTo: null, loading: false };
+  state.expedition = { subtab: 'checklist', days: [], idx: 0, loadedFrom: null, loadedTo: null, loading: false };
 
   async function expInit() {
     const track = document.getElementById('exp-track');
@@ -3103,11 +3103,21 @@
     document.getElementById('exp-top-label').textContent = '';
 
     try {
-      const today = new Date();
-      const from  = today.toISOString().slice(0, 10);
-      const to    = new Date(today.getTime() + 10 * 86400000).toISOString().slice(0, 10);
+      const today    = new Date();
+      const todayIso = today.toISOString().slice(0, 10);
+      const from = new Date(today.getTime() - 7  * 86400000).toISOString().slice(0, 10);
+      const to   = new Date(today.getTime() + 15 * 86400000).toISOString().slice(0, 10);
+
       await expFetchRange(from, to, true);
-      state.expedition.loadedTo = to;
+      state.expedition.loadedFrom = from;
+      state.expedition.loadedTo   = to;
+
+      // 初期表示位置は「本日」、無ければ本日に一番近い未来の日
+      const days = state.expedition.days;
+      let idx = days.findIndex(d => d.date >= todayIso);
+      if (idx < 0) idx = Math.max(days.length - 1, 0);
+      expGoTo(idx, false);
+
       state.expeditionLoaded = true;
     } catch(e) {
       track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込みに失敗しました：' + esc(e.message) + '<br><br><span style="text-decoration:underline;cursor:pointer" onclick="expRetry()">タップして再試行</span></div></div>';
@@ -3121,6 +3131,10 @@
 
   async function expFetchRange(from, to, replace) {
     const data = await apiGet('lv_expedition_checklist', { from, to });
+    // 先頭側に日付が追加されるとidxがずれるため、現在表示中の日付を退避して後で復元する
+    const currentDate = (!replace && state.expedition.days[state.expedition.idx])
+      ? state.expedition.days[state.expedition.idx].date : null;
+
     if (replace) {
       state.expedition.days = data.days;
     } else {
@@ -3128,6 +3142,12 @@
       data.days.forEach(d => { if (!existingDates.has(d.date)) state.expedition.days.push(d); });
       state.expedition.days.sort((a, b) => a.date.localeCompare(b.date));
     }
+
+    if (currentDate) {
+      const restoredIdx = state.expedition.days.findIndex(d => d.date === currentDate);
+      if (restoredIdx >= 0) state.expedition.idx = restoredIdx;
+    }
+
     expRenderTrack();
   }
 
@@ -3162,10 +3182,11 @@
     const amount = (item.amount !== null && item.amount !== undefined) ? '¥' + item.amount.toLocaleString() : '¥ —';
 
     if (item.type === 'live') {
+      const icon = item.format === '公演' ? '🎭' : '🎸';
       return `<div class="exp-card live">
-        <div class="exp-card-live-name">【ライブ】${esc(item.artist)}</div>
-        ${item.venue ? `<div class="exp-card-live-venue">@${esc(item.venue)}</div>` : ''}
+        <div class="exp-card-live-name">${icon} ${esc(item.artist)}</div>
         ${item.perfName ? `<div class="exp-card-live-perfname">${esc(item.perfName)}</div>` : ''}
+        ${item.venue ? `<div class="exp-card-live-venue">@${esc(item.venue)}</div>` : ''}
       </div>`;
     }
 
@@ -3215,16 +3236,26 @@
     document.getElementById('exp-top-label').textContent = days[idx].dateLabel;
     document.querySelectorAll('#exp-dots .exp-dot').forEach((d, i) => d.classList.toggle('active', i === idx));
 
-    if (idx >= days.length - 2 && !state.expedition.loading) expLoadMore();
+    if (!state.expedition.loading) {
+      if (idx <= 1) expLoadMore('backward');
+      else if (idx >= days.length - 2) expLoadMore('forward');
+    }
   }
 
-  async function expLoadMore() {
-    if (!state.expedition.loadedTo) return;
+  async function expLoadMore(direction) {
     state.expedition.loading = true;
     try {
-      const nextTo = new Date(new Date(state.expedition.loadedTo).getTime() + 30 * 86400000).toISOString().slice(0, 10);
-      await expFetchRange(state.expedition.loadedTo, nextTo, false);
-      state.expedition.loadedTo = nextTo;
+      if (direction === 'backward') {
+        if (!state.expedition.loadedFrom) return;
+        const prevFrom = new Date(new Date(state.expedition.loadedFrom).getTime() - 30 * 86400000).toISOString().slice(0, 10);
+        await expFetchRange(prevFrom, state.expedition.loadedFrom, false);
+        state.expedition.loadedFrom = prevFrom;
+      } else {
+        if (!state.expedition.loadedTo) return;
+        const nextTo = new Date(new Date(state.expedition.loadedTo).getTime() + 30 * 86400000).toISOString().slice(0, 10);
+        await expFetchRange(state.expedition.loadedTo, nextTo, false);
+        state.expedition.loadedTo = nextTo;
+      }
     } finally {
       state.expedition.loading = false;
     }
