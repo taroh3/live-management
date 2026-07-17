@@ -3182,7 +3182,7 @@
     const amount = (item.amount !== null && item.amount !== undefined) ? '¥' + item.amount.toLocaleString() : '¥ —';
 
     if (item.type === 'live') {
-      const icon = item.format === '公演' ? '🎭' : '🎸';
+      const icon = item.isPlay ? '🎭' : '🎸';
       return `<div class="exp-card live">
         <div class="exp-card-live-name">${icon} ${esc(item.artist)}</div>
         ${item.perfName ? `<div class="exp-card-live-perfname">${esc(item.perfName)}</div>` : ''}
