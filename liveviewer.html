@@ -689,7 +689,7 @@
     /* 遠征一覧（B） */
     .exp-topbar-sub { font-size: 13px; color: var(--text-sub); margin-top: 2px; }
     .exp-daylabel {
-      font-size: 16px; font-weight: 800; color: var(--text);
+      font-size: 20px; font-weight: 800; color: var(--text);
       letter-spacing: .02em; margin-bottom: 8px;
     }
     .exp-dash-tap-hint {
@@ -3129,32 +3129,70 @@
   // ============================================================
   state.expedition = { subtab: 'checklist', days: [], idx: 0, loadedFrom: null, loadedTo: null, loading: false };
 
+  const EXP_CHECKLIST_CACHE_KEY = 'lv_exp_checklist_cache_v1';
+
   async function expInit() {
-    const track = document.getElementById('exp-track');
-    track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込み中...（初回は手動入力シートの更新もあわせて行うため、数十秒かかる場合があります）</div></div>';
-    document.getElementById('exp-dots').innerHTML = '';
-    document.getElementById('exp-top-label').textContent = '';
+    const track    = document.getElementById('exp-track');
+    const today    = new Date();
+    const todayIso = today.toISOString().slice(0, 10);
+    const from = new Date(today.getTime() - 7  * 86400000).toISOString().slice(0, 10);
+    const to   = new Date(today.getTime() + 15 * 86400000).toISOString().slice(0, 10);
 
-    try {
-      const today    = new Date();
-      const todayIso = today.toISOString().slice(0, 10);
-      const from = new Date(today.getTime() - 7  * 86400000).toISOString().slice(0, 10);
-      const to   = new Date(today.getTime() + 15 * 86400000).toISOString().slice(0, 10);
-
-      await expFetchRange(from, to, true);
-      state.expedition.loadedFrom = from;
-      state.expedition.loadedTo   = to;
-
-      // 初期表示位置は「本日」、無ければ本日に一番近い未来の日
+    function positionAtToday() {
       const days = state.expedition.days;
       let idx = days.findIndex(d => d.date >= todayIso);
       if (idx < 0) idx = Math.max(days.length - 1, 0);
       expGoTo(idx, false);
+    }
 
+    // ① 端末に前回のキャッシュがあれば、通信を待たずに即座に表示（オフライン対応）
+    let usedCache = false;
+    try {
+      const cachedRaw = localStorage.getItem(EXP_CHECKLIST_CACHE_KEY);
+      if (cachedRaw) {
+        state.expedition.days = JSON.parse(cachedRaw).days || [];
+        state.expedition.loadedFrom = from;
+        state.expedition.loadedTo   = to;
+        expRenderTrack();
+        positionAtToday();
+        state.expeditionLoaded = true;
+        usedCache = true;
+      }
+    } catch(e) {}
+
+    if (!usedCache) {
+      track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込み中...（初回は手動入力シートの更新もあわせて行うため、数十秒かかる場合があります）</div></div>';
+      document.getElementById('exp-dots').innerHTML = '';
+      document.getElementById('exp-top-label').textContent = '';
+    }
+
+    // ② 裏で最新データを取得し、キャッシュと異なる場合のみ表示を同期する
+    try {
+      const data      = await apiGet('lv_expedition_checklist', { from, to });
+      const freshDays = data.days;
+      const isSame    = usedCache && JSON.stringify(state.expedition.days) === JSON.stringify(freshDays);
+
+      if (!isSame) {
+        const curDate = state.expedition.days[state.expedition.idx] ? state.expedition.days[state.expedition.idx].date : null;
+        state.expedition.days = freshDays;
+        const restoredIdx = curDate ? freshDays.findIndex(d => d.date === curDate) : -1;
+        expRenderTrack();
+        if (restoredIdx >= 0) expGoTo(restoredIdx, false); else positionAtToday();
+        if (usedCache) showToast('遠征チェックリストを最新に更新しました');
+      }
+
+      state.expedition.loadedFrom = from;
+      state.expedition.loadedTo   = to;
+      _lvSafeSetItem(EXP_CHECKLIST_CACHE_KEY, JSON.stringify({ days: freshDays }));
       state.expeditionLoaded = true;
+
     } catch(e) {
-      track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込みに失敗しました：' + esc(e.message) + '<br><br><span style="text-decoration:underline;cursor:pointer" onclick="expRetry()">タップして再試行</span></div></div>';
-      state.expeditionLoaded = false;
+      if (usedCache) {
+        console.warn('遠征チェックリストの最新取得に失敗（キャッシュ表示を継続）: ' + e.message);
+      } else {
+        track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込みに失敗しました：' + esc(e.message) + '<br><br><span style="text-decoration:underline;cursor:pointer" onclick="expRetry()">タップして再試行</span></div></div>';
+        state.expeditionLoaded = false;
+      }
     }
   }
 
@@ -3333,24 +3371,62 @@
   // ---- 遠征一覧（B）：チェックリストと同じカード表現を流用 ----
   state.expeditionDash = { expeditions: [], idx: 0, loadedTo: null, loading: false };
 
+  const EXP_DASHBOARD_CACHE_KEY = 'lv_exp_dashboard_cache_v1';
+
   async function expDashInit() {
     const track = document.getElementById('exp-dash-track');
-    track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込み中...</div></div>';
-    document.getElementById('exp-dash-dots').innerHTML = '';
-    document.getElementById('exp-dash-top-label').textContent = '';
-    document.getElementById('exp-dash-top-sub').textContent = '';
+    const today = new Date();
+    const from  = today.toISOString().slice(0, 10);
+    const to    = new Date(today.getTime() + 180 * 86400000).toISOString().slice(0, 10);
 
+    // ① 端末に前回のキャッシュがあれば、通信を待たずに即座に表示（オフライン対応）
+    let usedCache = false;
     try {
-      const today = new Date();
-      const from  = today.toISOString().slice(0, 10);
-      const to    = new Date(today.getTime() + 180 * 86400000).toISOString().slice(0, 10);
-      await expDashFetchRange(from, to, true);
+      const cachedRaw = localStorage.getItem(EXP_DASHBOARD_CACHE_KEY);
+      if (cachedRaw) {
+        state.expeditionDash.expeditions = JSON.parse(cachedRaw).expeditions || [];
+        state.expeditionDash.loadedTo = to;
+        expDashRenderTrack();
+        expDashGoTo(0, false);
+        state.expeditionDashboardLoaded = true;
+        usedCache = true;
+      }
+    } catch(e) {}
+
+    if (!usedCache) {
+      track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込み中...</div></div>';
+      document.getElementById('exp-dash-dots').innerHTML = '';
+      document.getElementById('exp-dash-top-label').textContent = '';
+      document.getElementById('exp-dash-top-sub').textContent = '';
+    }
+
+    // ② 裏で最新データを取得し、キャッシュと異なる場合のみ表示を同期する
+    try {
+      const data  = await apiGet('lv_expedition_dashboard', { from, to });
+      const fresh = data.expeditions;
+      const isSame = usedCache && JSON.stringify(state.expeditionDash.expeditions) === JSON.stringify(fresh);
+
+      if (!isSame) {
+        const curStart = state.expeditionDash.expeditions[state.expeditionDash.idx]
+          ? state.expeditionDash.expeditions[state.expeditionDash.idx].startDate : null;
+        state.expeditionDash.expeditions = fresh;
+        const restoredIdx = curStart ? fresh.findIndex(x => x.startDate === curStart) : -1;
+        expDashRenderTrack();
+        expDashGoTo(restoredIdx >= 0 ? restoredIdx : 0, false);
+        if (usedCache) showToast('遠征一覧を最新に更新しました');
+      }
+
       state.expeditionDash.loadedTo = to;
-      expDashGoTo(0, false);
+      _lvSafeSetItem(EXP_DASHBOARD_CACHE_KEY, JSON.stringify({ expeditions: fresh }));
       state.expeditionDashboardLoaded = true;
+
     } catch(e) {
-      track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込みに失敗しました：' + esc(e.message) + '<br><br><span style="text-decoration:underline;cursor:pointer" onclick="expDashRetry()">タップして再試行</span></div></div>';
-      state.expeditionDashboardLoaded = false;
+      if (usedCache) {
+        console.warn('遠征一覧の最新取得に失敗（キャッシュ表示を継続）: ' + e.message);
+      } else {
+        track.innerHTML = '<div class="swiper-slide"><div class="exp-empty">読み込みに失敗しました：' + esc(e.message) + '<br><br><span style="text-decoration:underline;cursor:pointer" onclick="expDashRetry()">タップして再試行</span></div></div>';
+        state.expeditionDashboardLoaded = false;
+      }
     }
   }
 
