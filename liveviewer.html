@@ -697,11 +697,14 @@
       padding: 6px 16px 2px;
     }
 
-    /* 日付ブロックごとに背景色を交互に変えて区切りを分かりやすく（青緑⇔暗めのえんじ色） */
-    .exp-day-block { padding: 14px 16px 4px; margin: 0 -16px 4px; border-top: 4px solid #000; }
+    /* 日付ブロックごとに背景色を交互に変えて区切りを分かりやすく（青緑⇔濃いグレー）＋左アクセントバー */
+    .exp-day-block {
+      padding: 14px 16px 4px 13px; margin: 0 -16px 4px;
+      border-top: 4px solid #000; border-left: 5px solid;
+    }
     .exp-day-block:first-child { border-top: none; }
-    .exp-day-block.alt-a { background: #0f4a45; }
-    .exp-day-block.alt-b { background: #521c27; }
+    .exp-day-block.alt-a { background: #0f4a45; border-left-color: #3ddbc7; }
+    .exp-day-block.alt-b { background: #333333; border-left-color: #aaaaaa; }
   </style>
 </head>
 <body>
